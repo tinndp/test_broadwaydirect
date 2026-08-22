@@ -1,0 +1,34 @@
+{
+  "_note": "Snapshot MANUALLY checked via browser on 2026-08-21 at https://broadwaydirect.com/shows/ (24 shows listed at that time). This is a starting-point reference, NOT an automated data source - the show list + on-sale status change over time, so re-run 'python -m broadwaydirect.discover' to get an updated version before crawling for real.",
+  "checked_at": "2026-08-21",
+  "on_platform": [
+    {"slug": "860", "name": "860", "series_id": "860860"},
+    {"slug": "aladdin", "name": "Aladdin", "series_id": "527646"},
+    {"slug": "buena-vista-social-club", "name": "Buena Vista Social Club", "series_id": "283628"},
+    {"slug": "chicago", "name": "Chicago", "series_id": "357893"},
+    {"slug": "evita", "name": "Evita", "series_id": "384823"},
+    {"slug": "a-few-good-men", "name": "A Few Good Men", "series_id": "233946"},
+    {"slug": "galileo", "name": "Galileo", "series_id": "425453"},
+    {"slug": "the-great-gatsby", "name": "The Great Gatsby", "series_id": "843473"},
+    {"slug": "hamilton", "name": "Hamilton", "series_id": "426458"},
+    {"slug": "inter-alia", "name": "Inter Alia", "series_id": "468372"},
+    {"slug": "just-in-time", "name": "Just In Time", "series_id": "587846"},
+    {"slug": "the-lion-king", "name": "The Lion King", "series_id": "546654"},
+    {"slug": "the-lost-boys", "name": "The Lost Boys", "series_id": "843567"},
+    {"slug": "maybe-happy-ending", "name": "Maybe Happy Ending", "series_id": "629234"},
+    {"slug": "mj-the-musical", "name": "MJ", "series_id": "658436"}
+  ],
+  "off_platform_confirmed": [
+    {"slug": "the-book-of-mormon", "reason": "Buy Tickets points to eugeneoneillbroadway.com, not tickets.broadwaydirect.com"},
+    {"slug": "hadestown", "reason": "Buy Tickets points to walterkerrbroadway.com"},
+    {"slug": "harry-potter-cursed-child", "reason": "Buy Tickets points to hpny.atgtickets.com"},
+    {"slug": "moulin-rouge-the-musical", "reason": "Buy Tickets points to alhirschfeldbroadway.com"}
+  ],
+  "not_yet_verified": [
+    {"slug": "10-things-i-hate-about-you", "reason": "Not yet on sale ('Opens August 17 2027' at check time) - no Buy Tickets button to check yet"},
+    {"slug": "dolly-a-true-original-musical", "reason": "Not directly checked yet - run discover.py"},
+    {"slug": "the-fantasticks", "reason": "Not directly checked yet - run discover.py"},
+    {"slug": "the-imaginary-invalid", "reason": "Not directly checked yet - run discover.py"},
+    {"slug": "juliet", "reason": "Link was blocked by the browser during the check (inconclusive) - run discover.py"}
+  ]
+}

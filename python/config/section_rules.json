@@ -1,0 +1,20 @@
+{
+  "_comment": "Configuration for section naming / ticket grouping rules used when building 'listings' from raw seat data. Edit this file per venue (each venue may number its seats differently). The example values below follow the client's requirements doc (ORCH/FMEZZ/RMEZZ) - MUST BE CROSS-CHECKED AGAINST HAMILTON'S REAL SEAT DATA (Richard Rodgers Theatre) before using in production; the sample JSON in tests/fixtures is actually data from a Schmigadoon performance (Nederlander Theatre), not Hamilton.",
+
+  "sides_center_prefixes": [
+    "ORCH", "FMEZZ", "RMEZZ", "MEZZ"
+  ],
+  "box_prefixes": [
+    "BOX"
+  ],
+  "center_seat_threshold": 100,
+  "sides_suffix": "SIDES",
+  "center_suffix": "CENTER",
+
+  "_rule_explanation": {
+    "ORCH/FMEZZ/RMEZZ, seat number <= threshold": "seat is odd or even (not grouped by consecutive unit) -> assign SIDES suffix, seating_type=Odd/Even, grouping step = 2",
+    "ORCH/FMEZZ/RMEZZ, seat number > threshold": "assign CENTER suffix, seating_type=Consecutive, step = 1",
+    "BOX, any seat number": "no suffix assigned, seating_type=Consecutive, step = 1",
+    "default (section doesn't match any prefix above)": "applies the same threshold logic as ORCH/FMEZZ/RMEZZ (can be customized separately if needed)"
+  }
+}
