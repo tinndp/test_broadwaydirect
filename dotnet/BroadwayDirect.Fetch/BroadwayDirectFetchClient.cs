@@ -49,7 +49,7 @@ public sealed class BroadwayDirectFetchClient : IAsyncDisposable
             var genBefore = generation;
             try
             {
-                var (status, body) = await _pool.ExecuteFetchAsync(control, apiUrl);
+                var (status, body) = await _pool.ExecuteFetchAsync(control, apiUrl, timeout);
                 if (status == 403)
                     throw new InvalidOperationException($"Blocked by Cloudflare (HTTP {status})");
                 if (status >= 400 || status == 0)

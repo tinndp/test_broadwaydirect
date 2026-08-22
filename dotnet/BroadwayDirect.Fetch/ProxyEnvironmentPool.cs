@@ -30,6 +30,11 @@ public sealed class ProxyEnvironmentPool : IAsyncDisposable
     private readonly Dictionary<string, SemaphoreSlim> _locks = new();
     private readonly object _locksGate = new();
 
+    // Pending ExecuteFetchAsync calls awaiting their result via
+    // WebMessageReceived, keyed by a per-call request id (see ExecuteFetchAsync).
+    private readonly Dictionary<string, TaskCompletionSource<string>> _pendingFetches = new();
+    private readonly object _pendingGate = new();
+
     public ProxyEnvironmentPool(WebView2Host host) => _host = host;
 
     private static string KeyOf(string proxy) => string.IsNullOrEmpty(proxy) ? "__direct__" : proxy;
@@ -135,6 +140,7 @@ public sealed class ProxyEnvironmentPool : IAsyncDisposable
             form.Show();
 
             await control.EnsureCoreWebView2Async(environment);
+            control.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
             if (!string.IsNullOrEmpty(proxyUser))
             {
@@ -189,70 +195,102 @@ public sealed class ProxyEnvironmentPool : IAsyncDisposable
         }
     }
 
-    // SOH control character (\u0001) used as the delimiter between status and
-    // body. Why not use nested JSON (e.g. {"status":200,"body":"..."}) anymore:
-    // different WebView2 runtime versions seem inconsistent in how they encode
-    // the returned value when the script returns a string (some get JSON-quoted
-    // twice, some don't). SOH never realistically appears raw in an API's JSON
-    // text response, so it's safe to use as a delimiter. IMPORTANT: the JS side
-    // uses the "\u0001" escape (does NOT embed a raw SOH byte in the JS
-    // source) - we previously hit a WebView2 bug returning "{}" (== what
-    // JSON.stringify(new Error(...)) produces in V8, i.e. the script hit a
-    // PARSE error before reaching try/catch), suspected to be caused by
-    // ExecuteScriptAsync mis-marshaling a raw control byte when sending it to
-    // the renderer process.
+    // SOH control character (\u0001) used as the delimiter between the
+    // request id / status / body segments of a postMessage payload. IMPORTANT:
+    // the JS side uses the "\u0001" escape (does NOT embed a raw SOH byte in
+    // the JS source). SOH never realistically appears raw in an API's JSON
+    // text response, so it's safe to use as a delimiter.
     private const char ResultSeparator = '\u0001';
+
+    // NOTE on why this doesn't just `return ...` from the script and read
+    // ExecuteScriptAsync's return value (the more obvious approach): on the
+    // WebView2 Runtime actually installed on the target machine,
+    // ExecuteScriptAsync does NOT reliably await the Promise returned by an
+    // async IIFE - it serializes the still-pending Promise object itself,
+    // which JSON.stringify()s to "{}" (Promise has no enumerable own
+    // properties, same reason JSON.stringify(new Error(...)) is also "{}").
+    // Confirmed via DiagnoseAsync: even a trivial `(async () => 'ok')()` with
+    // NO fetch/network involved came back as "{}", while a plain synchronous
+    // "1+1" came back correctly as "2" - so the failure is specific to
+    // Promise-returning scripts, not to fetch/Cloudflare/proxy. postMessage +
+    // WebMessageReceived is WebView2's dedicated content-to-host message
+    // channel and does not go through that return-value marshaling path.
+    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        var msg = e.TryGetWebMessageAsString();
+        if (msg == null) return;
+
+        var sep = msg.IndexOf(ResultSeparator);
+        if (sep < 0) return;
+        var requestId = msg[..sep];
+        var payload = msg[(sep + 1)..];
+
+        TaskCompletionSource<string>? tcs;
+        lock (_pendingGate)
+        {
+            if (!_pendingFetches.Remove(requestId, out tcs)) return;
+        }
+        tcs.TrySetResult(payload);
+    }
 
     /// <summary>Runs fetch() directly in the already-loaded page (uses the tab's
     /// real network stack/cookies/TLS fingerprint, not an out-of-band request) -
     /// see README_DOTNET.md for why we don't use an API equivalent to
-    /// Playwright's context.request.</summary>
-    public Task<(int Status, string Body)> ExecuteFetchAsync(WebView2 control, string url)
+    /// Playwright's context.request. Result comes back via postMessage/
+    /// WebMessageReceived, NOT via ExecuteScriptAsync's return value - see the
+    /// NOTE above OnWebMessageReceived.</summary>
+    public Task<(int Status, string Body)> ExecuteFetchAsync(WebView2 control, string url, TimeSpan timeout)
     {
         return _host.RunOnUiThreadAsync(async () =>
         {
-            var script = $$"""
-                (async () => {
-                    try {
-                        const r = await fetch({{JsonSerializer.Serialize(url)}}, {
-                            headers: { "Accept": "application/json, text/plain, */*" }
-                        });
-                        const body = await r.text();
-                        return String(r.status) + "\u0001" + body;
-                    } catch (e) {
-                        return "0\u0001" + String(e);
-                    }
-                })()
-                """;
+            var requestId = Guid.NewGuid().ToString("N");
+            var requestIdJson = JsonSerializer.Serialize(requestId);
+            var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_pendingGate) { _pendingFetches[requestId] = tcs; }
 
-            var raw = await control.CoreWebView2.ExecuteScriptAsync(script);
-
-            // Some WebView2 versions wrap the returned string in an extra layer of
-            // JSON quoting (e.g. "\"200{...}\""), others return it unwrapped - handle both.
-            var trimmed = raw.Trim();
-            string text;
-            if (trimmed.Length >= 2 && trimmed[0] == '"' && trimmed[^1] == '"')
+            try
             {
-                try { text = JsonSerializer.Deserialize<string>(trimmed) ?? trimmed; }
-                catch (JsonException) { text = trimmed; }
-            }
-            else
-            {
-                text = trimmed;
-            }
+                var script = $$"""
+                    (async () => {
+                        try {
+                            const r = await fetch({{JsonSerializer.Serialize(url)}}, {
+                                headers: { "Accept": "application/json, text/plain, */*" }
+                            });
+                            const body = await r.text();
+                            window.chrome.webview.postMessage({{requestIdJson}} + "\u0001" + String(r.status) + "\u0001" + body);
+                        } catch (e) {
+                            window.chrome.webview.postMessage({{requestIdJson}} + "\u0001" + "0\u0001" + String(e));
+                        }
+                    })();
+                    """;
 
-            var sep = text.IndexOf(ResultSeparator);
-            if (sep < 0 || !int.TryParse(text[..sep], out var status))
-            {
-                var preview = raw.Length <= 300 ? raw : raw[..300] + "...(truncated)";
-                var diag = await DiagnoseAsync(control, url);
-                throw new InvalidOperationException(
-                    $"Could not parse the ExecuteScriptAsync result (missing delimiter/invalid status). " +
-                    $"Raw: {preview} | Diag: {diag}");
-            }
+                // Fire-and-forget: this call's return value is deliberately not
+                // used (see the NOTE above OnWebMessageReceived) - only awaited
+                // to surface a synchronous script-level failure (e.g. a syntax
+                // error) that would prevent the postMessage from ever firing.
+                await control.CoreWebView2.ExecuteScriptAsync(script);
 
-            var body = text[(sep + 1)..];
-            return (status, body);
+                using var cts = new CancellationTokenSource(timeout);
+                using var reg = cts.Token.Register(() => tcs.TrySetException(
+                    new TimeoutException($"Timed out waiting for the postMessage result from {url}")));
+
+                var text = await tcs.Task;
+                var sep = text.IndexOf(ResultSeparator);
+                if (sep < 0 || !int.TryParse(text[..sep], out var status))
+                {
+                    var diag = await DiagnoseAsync(control, url);
+                    throw new InvalidOperationException(
+                        $"Could not parse the postMessage result (missing delimiter/invalid status). " +
+                        $"Raw: {text} | Diag: {diag}");
+                }
+
+                var body = text[(sep + 1)..];
+                return (status, body);
+            }
+            finally
+            {
+                lock (_pendingGate) { _pendingFetches.Remove(requestId); }
+            }
         });
     }
 
