@@ -89,6 +89,28 @@ curl -X POST http://localhost:5263/api/eventinventory \
 Default retry/sleep/concurrency configuration lives in
 `BroadwayDirect.Api/appsettings.json` under the `"Fetch"` section.
 
+Response shape: `{"eventId", "raw": <unmodified Tixtrack JSON>, "price_levels": [...], "listings": [...]}` -
+"raw" preserves the old bare-JSON behavior; "price_levels"/"listings" are
+the same grouped data (via `SeatGrouper`/`SqliteStorage.ParsePriceLevelsFromInventory`)
+mirrored to MongoDB's `cleaned_events` collection, so callers don't have to
+duplicate the grouping logic themselves. Same contract as
+`../python/broadwaydirect/api.py`.
+
+Mongo mirroring (environment variables, all optional):
+
+```
+MONGO_URI            default "mongodb://localhost:27017"
+MONGO_DB             default "broadwaydirect"
+SECTION_RULES_PATH   path to section_rules.json (default: built-in SectionRules.Default())
+```
+
+Mongo writes are best-effort: if MongoDB is unreachable, a warning is
+logged but the HTTP response still succeeds with the fetched JSON -
+persistence failure never blocks the fetch result. See
+`BroadwayDirect.Core/Storage/MongoStore.cs` for the schema (2 collections,
+`raw_events`/`cleaned_events`, shared across sources, unique key
+`(source, event_id)`).
+
 ## Notable differences from the Python version
 
 - **No more `--headless`**: WebView2 always uses a real window (positioned

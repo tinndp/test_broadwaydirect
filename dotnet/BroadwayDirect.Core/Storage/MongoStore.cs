@@ -8,10 +8,20 @@ namespace BroadwayDirect.Core.Storage;
 /// An ADDITIONAL (mirror) store on MongoDB - does NOT replace SQLite/CSV.
 /// 1:1 port of broadwaydirect/mongo_storage.py. See README.md's "MongoDB vs SQL" section.
 ///
-/// 2 kinds of data are written:
-///   - raw_&lt;kind&gt; (e.g. raw_eventinventory, raw_events_by_month): the JSON
-///     returned by the API verbatim, with no fields transformed/filtered.
-///   - cleaned_events: a document-shaped copy of the grouped data (Event + PriceLevel + Listing).
+/// 2 collections, shared across ticket sources (not one collection pair per
+/// source) - every document carries a "source" field (e.g.
+/// "tickets.broadwaydirect.com", taken from the fetched event's domain) so
+/// that adding another ticketing site later means writing more documents
+/// with a different "source" value, not creating more collections. Unique
+/// key is (source, event_id) on both:
+///   - raw_events: the eventinventory JSON returned by the API verbatim,
+///     with NO fields transformed/filtered - used for cross-checking/
+///     debugging or re-grouping under new rules later without calling the
+///     API again.
+///   - cleaned_events: a document-shaped copy of the grouped data
+///     (PriceLevel + Listing), same content as the price_levels/listings
+///     tables in SQLite, just structured differently (nested instead of
+///     relational).
 /// </summary>
 public class MongoStore
 {
@@ -26,43 +36,39 @@ public class MongoStore
         _client.GetDatabase("admin").RunCommand<BsonDocument>(new BsonDocument("ping", 1));
         _db = _client.GetDatabase(dbName);
 
-        _db.GetCollection<BsonDocument>("raw_eventinventory")
+        _db.GetCollection<BsonDocument>("raw_events")
             .Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("event_id"),
-                new CreateIndexOptions { Unique = true }));
-        _db.GetCollection<BsonDocument>("raw_events_by_month")
-            .Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("series_id").Ascending("year").Ascending("month"),
+                Builders<BsonDocument>.IndexKeys.Ascending("source").Ascending("event_id"),
                 new CreateIndexOptions { Unique = true }));
         _db.GetCollection<BsonDocument>("cleaned_events")
             .Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("event_id"),
+                Builders<BsonDocument>.IndexKeys.Ascending("source").Ascending("event_id"),
                 new CreateIndexOptions { Unique = true }));
     }
 
-    /// <summary>kind: "eventinventory" | "events_by_month". key: identifies the
-    /// record (e.g. {"event_id": 123}). raw: the original JSON returned by the
-    /// API, saved verbatim.</summary>
-    public void SaveRaw(string kind, BsonDocument key, BsonDocument raw)
+    /// <summary>source: identifies which ticket site/platform this came from
+    /// (e.g. "tickets.broadwaydirect.com") - lets raw_events hold data from
+    /// multiple sources without colliding. raw: the original eventinventory
+    /// JSON returned by the API, saved verbatim with no modifications.</summary>
+    public void SaveRawEvent(string source, string eventId, BsonDocument raw)
     {
-        var coll = _db.GetCollection<BsonDocument>($"raw_{kind}");
-        var doc = new BsonDocument(key);
-        doc["raw"] = raw;
-        doc["fetched_at"] = DateTime.UtcNow;
-        coll.ReplaceOne(new BsonDocument(key), doc, new ReplaceOptions { IsUpsert = true });
+        var key = new BsonDocument { ["source"] = source, ["event_id"] = eventId };
+        var doc = new BsonDocument(key)
+        {
+            ["raw"] = raw,
+            ["fetched_at"] = DateTime.UtcNow,
+        };
+        _db.GetCollection<BsonDocument>("raw_events")
+            .ReplaceOne(key, doc, new ReplaceOptions { IsUpsert = true });
     }
 
-    public void SaveCleanedEvent(Event ev, IEnumerable<PriceLevel> priceLevels,
+    public void SaveCleanedEvent(string source, string eventId, IEnumerable<PriceLevel> priceLevels,
         IEnumerable<Listing> listings, string? seriesId = null)
     {
-        var doc = new BsonDocument
+        var key = new BsonDocument { ["source"] = source, ["event_id"] = eventId };
+        var doc = new BsonDocument(key)
         {
-            ["event_id"] = ev.Id,
-            ["series_id"] = !string.IsNullOrEmpty(seriesId) ? seriesId
-                : (string.IsNullOrEmpty(ev.SeriesId) ? BsonNull.Value : ev.SeriesId),
-            ["name"] = ev.Name,
-            ["local_date"] = ev.LocalDate,
-            ["availability_color"] = ev.AvailabilityColor,
+            ["series_id"] = string.IsNullOrEmpty(seriesId) ? BsonNull.Value : seriesId,
             ["price_levels"] = new BsonArray(priceLevels.Select(pl => new BsonDocument
             {
                 ["price_level_id"] = pl.PriceLevelId,
@@ -86,7 +92,7 @@ public class MongoStore
         };
 
         _db.GetCollection<BsonDocument>("cleaned_events")
-            .ReplaceOne(new BsonDocument("event_id", ev.Id), doc, new ReplaceOptions { IsUpsert = true });
+            .ReplaceOne(key, doc, new ReplaceOptions { IsUpsert = true });
     }
 
     public void Close() { /* MongoClient in the .NET driver doesn't need manual disposal */ }

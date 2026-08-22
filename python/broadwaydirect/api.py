@@ -14,10 +14,8 @@ series/shows). Mongo writes are best-effort: if MongoDB is unreachable, a
 warning is logged but the HTTP response still succeeds with the fetched
 JSON - persistence failure never blocks the fetch result.
 
-NOTE: dotnet/BroadwayDirect.Api does not implement this response shape yet
-(it still returns bare raw JSON, no grouping/Mongo) - the two are meant to
-expose the same contract eventually, but that .NET-side change is a
-separate, not-yet-done task.
+dotnet/BroadwayDirect.Api/Program.cs implements the same response shape and
+Mongo schema (see that file and BroadwayDirect.Core/Storage/MongoStore.cs).
 
 Configuration (environment variables, all optional):
     MONGO_URI          default "mongodb://localhost:27017"
