@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BroadwayDirect.Core.Grouping;
 using BroadwayDirect.Core.Models;
+using BroadwayDirect.Core.Proxy;
 using BroadwayDirect.Core.Storage;
 using BroadwayDirect.Fetch;
 using MongoDB.Bson;
@@ -91,10 +92,25 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req, BroadwayDir
     if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var parsedUrl))
         return Results.BadRequest(new { error = "invalid url" });
 
+    // Accepts either a proper scheme://user:pass@host:port URI or the raw
+    // host:port:user:pass format proxy providers hand out - see ProxyUri.Normalize.
+    var proxy = "";
+    if (!string.IsNullOrWhiteSpace(req.Proxy))
+    {
+        try
+        {
+            proxy = ProxyUri.Normalize(req.Proxy);
+        }
+        catch (FormatException ex)
+        {
+            return Results.BadRequest(new { error = $"invalid proxy: {ex.Message}" });
+        }
+    }
+
     JsonElement json;
     try
     {
-        json = await client.GetEventInventoryAsync(req.EventId, req.Url, req.Proxy ?? "");
+        json = await client.GetEventInventoryAsync(req.EventId, req.Url, proxy);
     }
     catch (Exception ex)
     {

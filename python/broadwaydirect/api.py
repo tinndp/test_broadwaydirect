@@ -45,11 +45,34 @@ from pydantic import BaseModel
 from .client import BroadwayDirectClient
 from .grouping import load_rules, seats_from_inventory, group_into_listings
 from .models import Event
+from .proxy_pool import ProxyPool, normalize_proxy
 from .storage import parse_price_levels_from_inventory
 
 app = FastAPI(title="BroadwayDirect Fetch API")
 
 RULES = load_rules(os.environ.get("SECTION_RULES_PATH"))
+
+# Optional: if PROXY_LIST_PATH is set, requests that don't specify their own
+# `proxy` field get one assigned round-robin from this pool (see
+# proxy_pool.py). Unset by default - existing no-proxy behavior is unchanged.
+_PROXY_POOL: Optional[ProxyPool] = None
+_proxy_list_path = os.environ.get("PROXY_LIST_PATH")
+if _proxy_list_path:
+    try:
+        _PROXY_POOL = ProxyPool(_proxy_list_path)
+        print(f"  loaded {len(_PROXY_POOL)} proxies from {_proxy_list_path}", file=sys.stderr)
+    except Exception as e:
+        print(f"  !! could not load PROXY_LIST_PATH={_proxy_list_path}: {e}", file=sys.stderr)
+
+
+def _pick_proxy(requested: Optional[str]) -> Optional[str]:
+    """A request-supplied `proxy` always wins (accepts either a proper
+    scheme://user:pass@host:port URI or the raw host:port:user:pass format
+    proxy providers hand out - see normalize_proxy); otherwise falls back to
+    the next proxy in the pool (if configured), else None (direct)."""
+    if requested:
+        return normalize_proxy(requested)
+    return _PROXY_POOL.next() if _PROXY_POOL else None
 
 # Client pool keyed by (url, proxy) - reuses a browser/context already
 # "warmed up" past Cloudflare across requests with the same (url, proxy),
@@ -157,7 +180,11 @@ async def event_inventory(req: EventInventoryRequest):
     if not parsed.scheme or not parsed.netloc:
         return JSONResponse(status_code=400, content={"error": "invalid url"})
 
-    client = await _get_client(req.url, req.proxy)
+    try:
+        proxy = _pick_proxy(req.proxy)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": f"invalid proxy: {e}"})
+    client = await _get_client(req.url, proxy)
     try:
         data = await client.get_event_inventory(req.eventId)
     except Exception as e:

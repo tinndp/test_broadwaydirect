@@ -104,11 +104,26 @@ class BroadwayDirectClient:
             seed_url = f"https://{self.domain}/"
         await page.goto(seed_url, wait_until="domcontentloaded", timeout=self.timeout * 1000)
         await page.wait_for_timeout(8000)
-        await page.close()
+        # Explicit wait for the challenge's background request (the one that
+        # actually sets cf_clearance via Set-Cookie) to finish, instead of
+        # closing the page right at the 8s mark - that request can still be
+        # in flight then, especially over a slower proxy hop, and closing the
+        # page while it's in flight aborts it before the cookie is written.
+        # Best-effort: some challenge variants keep a poller alive
+        # indefinitely, so this is allowed to time out without failing.
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
         cookies = await self._context.cookies(f"https://{self.domain}")
         if not any(c["name"] == "cf_clearance" for c in cookies):
+            title = await page.title()
+            body_snippet = (await page.content())[:300]
             print("  !! cf_clearance cookie not found - Cloudflare may still "
                   "be blocking, subsequent requests will error", file=sys.stderr)
+            print(f"  !! page title: {title!r}", file=sys.stderr)
+            print(f"  !! page body (first 300 chars): {body_snippet!r}", file=sys.stderr)
+        await page.close()
         self._session_gen += 1
 
     async def _ensure_session(self, series_id=None) -> None:

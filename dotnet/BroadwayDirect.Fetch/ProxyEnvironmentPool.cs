@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using BroadwayDirect.Core.Proxy;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -152,13 +153,43 @@ public sealed class ProxyEnvironmentPool : IAsyncDisposable
             }
 
             await NavigateAndWaitAsync(control, bootstrapUrl, timeout);
-            await Task.Delay(8000); // same as page.wait_for_timeout(8000) on the Python side, waits for the JS/cookie challenge to finish
+            await Task.Delay(8000); // initial wait for the JS/cookie challenge to run, same as the Python side
 
+            // Poll for cf_clearance for up to 5 more seconds instead of
+            // checking once right at the 8s mark - Cloudflare's challenge
+            // finishes with a background request that sets this cookie via
+            // Set-Cookie, and that request can still be in flight at a fixed
+            // time cutoff, especially over a slower proxy hop. Mirrors the
+            // race-condition fix in python/broadwaydirect/client.py's
+            // _open_session (see that file for the full analysis).
             var host = new Uri(bootstrapUrl).GetLeftPart(UriPartial.Authority);
-            var cookies = await control.CoreWebView2.CookieManager.GetCookiesAsync(host);
+            IReadOnlyList<CoreWebView2Cookie> cookies = Array.Empty<CoreWebView2Cookie>();
+            var pollDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (true)
+            {
+                cookies = await control.CoreWebView2.CookieManager.GetCookiesAsync(host);
+                if (cookies.Any(c => c.Name == "cf_clearance") || DateTime.UtcNow >= pollDeadline)
+                    break;
+                await Task.Delay(500);
+            }
+
             if (!cookies.Any(c => c.Name == "cf_clearance"))
             {
                 Console.Error.WriteLine("  !! cf_clearance cookie not found - Cloudflare may still be blocking, subsequent requests will error");
+                // Distinguishes a solvable JS challenge ("Just a moment"/
+                // checking-browser title) from a hard IP-level block ("Access
+                // denied"/error 1020) - the latter means the proxy IP itself
+                // is blacklisted and no amount of waiting will fix it.
+                try
+                {
+                    var titleJson = await control.CoreWebView2.ExecuteScriptAsync("document.title");
+                    var title = JsonSerializer.Deserialize<string>(titleJson);
+                    Console.Error.WriteLine($"  !! page title: {title}");
+                }
+                catch (Exception e)
+                {
+                    Console.Error.WriteLine($"  !! could not read page title for diagnostics: {e.Message}");
+                }
             }
 
             var newGeneration = (_sessions.TryGetValue(key, out var prev) ? prev.Generation : 0) + 1;

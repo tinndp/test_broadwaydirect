@@ -76,9 +76,11 @@ curl -X POST http://localhost:5263/api/eventinventory \
   -d '{"eventId":"<real eventId>","url":"https://tickets.broadwaydirect.com/tickets/series/860860"}'
 ```
 
-`proxy` is an **optional** JSON field (format
-`scheme://[user:pass@]host:port`) - if omitted, WebView2 calls directly
-with no proxy:
+`proxy` is an **optional** JSON field, accepting either
+`scheme://[user:pass@]host:port` or the raw `host:port:user:pass` format
+proxy providers commonly hand out (auto-converted - see
+`BroadwayDirect.Core/Proxy/ProxyUri.cs`'s `Normalize`) - if omitted,
+WebView2 calls directly with no proxy:
 
 ```bash
 curl -X POST http://localhost:5263/api/eventinventory \
@@ -132,4 +134,5 @@ persistence failure never blocks the fetch result. See
 dotnet test BroadwayDirect.Tests/BroadwayDirect.Tests.csproj
 ```
 
-Runs green 12/12 on macOS (Core only, doesn't touch WebView2).
+Runs green 17/17 on macOS (Core only, doesn't touch WebView2 - `ProxyUri`
+lives in Core specifically so it stays covered here).
