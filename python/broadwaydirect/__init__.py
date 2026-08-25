@@ -4,7 +4,7 @@ tickets.broadwaydirect.com).
 
 This package's scope is limited to: fetching data (client.py), grouping
 individual seats into 'listings' per the naming rules (grouping.py), and
-saving/exporting data (storage.py). It does NOT include pushing listings to
+saving data to MongoDB (mongo_storage.py). It does NOT include pushing listings to
 any secondary marketplace (no "Event Mapper -> Add to TA -> Broadcast via
 Autopilot" or "undercutter" pricing bot) - that's out of scope for this
 project, see README.md's "Scope & limitations" section for why.

@@ -13,8 +13,8 @@ results.
 ## Structure
 
 ```
-BroadwayDirect.Core/    - Models, Grouping, Storage (SQLite+Mongo+CSV), Discover
-                          (cross-platform, builds+tests green on macOS)
+BroadwayDirect.Core/    - Models, Grouping (incl. price-level parsing), Storage (Mongo only),
+                          Discover (cross-platform, builds+tests green on macOS)
 BroadwayDirect.Fetch/   - WebView2Host, ProxyEnvironmentPool, BroadwayDirectFetchClient
                           (Windows-only, NOT yet run)
 BroadwayDirect.Api/     - ASP.NET Core Minimal API: POST /api/eventinventory
@@ -25,6 +25,14 @@ BroadwayDirect.Tests/   - xUnit, 1:1 port of the original test_grouping.py + tes
                           this .NET port still keeps ShowDiscovery/Grouping/Storage
                           in Core even though nothing currently calls them from Api)
 ```
+
+**Storage/SqliteStorage.cs has been removed** - MongoDB (`MongoStore.cs`) is now the only
+persisted store, matching the Python side's `storage.py` removal (see README.md's "MongoDB vs
+SQL" section) and matching how this port's data actually gets consumed downstream (TMCrawler and
+BroadwayCrawler, the .NET Rowing-integration bots this project feeds into, only ever mirror
+listing data to Mongo too - see the main repo's TMCrawler/BroadwayCrawler for that convention).
+`SeatGrouper.ParsePriceLevelsFromInventory` (moved from the old SqliteStorage) is the only piece
+of that file still needed - it's pure inventory-JSON parsing, not SQLite-specific.
 
 **`BroadwayDirect.Cli` has been removed** (the discover/crawl/crawl-all
 console app) - no longer used; the HTTP API is now the sole entry point for
@@ -93,7 +101,7 @@ Default retry/sleep/concurrency configuration lives in
 
 Response shape: `{"eventId", "raw": <unmodified Tixtrack JSON>, "price_levels": [...], "listings": [...]}` -
 "raw" preserves the old bare-JSON behavior; "price_levels"/"listings" are
-the same grouped data (via `SeatGrouper`/`SqliteStorage.ParsePriceLevelsFromInventory`)
+the same grouped data (via `SeatGrouper.SeatsFromInventory`/`GroupIntoListings`/`ParsePriceLevelsFromInventory`)
 mirrored to MongoDB's `cleaned_events` collection, so callers don't have to
 duplicate the grouping logic themselves. Same contract as
 `../python/broadwaydirect/api.py`.

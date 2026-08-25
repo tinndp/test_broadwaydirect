@@ -43,10 +43,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .client import BroadwayDirectClient
-from .grouping import load_rules, seats_from_inventory, group_into_listings
+from .grouping import load_rules, seats_from_inventory, group_into_listings, parse_price_levels_from_inventory
 from .models import Event
 from .proxy_pool import ProxyPool, normalize_proxy
-from .storage import parse_price_levels_from_inventory
 
 app = FastAPI(title="BroadwayDirect Fetch API")
 
@@ -184,6 +183,11 @@ async def event_inventory(req: EventInventoryRequest):
         proxy = _pick_proxy(req.proxy)
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": f"invalid proxy: {e}"})
+    if proxy:
+        # host:port only (never the credentials) - lets you confirm which
+        # proxy actually served a given request when testing several.
+        print(f"  eventId={req.eventId} using proxy {urlparse(proxy).hostname}:{urlparse(proxy).port}",
+              file=sys.stderr)
     client = await _get_client(req.url, proxy)
     try:
         data = await client.get_event_inventory(req.eventId)

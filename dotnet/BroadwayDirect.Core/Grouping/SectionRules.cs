@@ -4,7 +4,7 @@ namespace BroadwayDirect.Core.Grouping;
 
 /// <summary>Section naming / ticket grouping rules, ported from python/config/section_rules.json + DEFAULT_RULES.</summary>
 public class SectionRules
-{
+{ 
     public List<string> SidesCenterPrefixes { get; set; } = new() { "ORCH", "FMEZZ", "RMEZZ", "MEZZ" };
     public List<string> BoxPrefixes { get; set; } = new() { "BOX" };
     public int CenterSeatThreshold { get; set; } = 100;

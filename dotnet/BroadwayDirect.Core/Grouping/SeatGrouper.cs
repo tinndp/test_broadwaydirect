@@ -190,4 +190,31 @@ public static class SeatGrouper
         SeatNums = run.Select(s => s.SeatNum).ToList(),
         SeatingType = seatingType,
     };
+
+    /// <summary>Parses priceMaps (raw JSON from the eventinventory API) into PriceLevels. Moved
+    /// here from the now-removed Storage/SqliteStorage.cs - it's pure inventory-JSON parsing (same
+    /// input as SeatsFromInventory above), not actually SQLite-specific; it just used to live next
+    /// to the SQLite write helpers that consumed its output. Mirrors
+    /// python/broadwaydirect/grouping.py's parse_price_levels_from_inventory (moved there for the
+    /// same reason - see that file).</summary>
+    public static List<PriceLevel> ParsePriceLevelsFromInventory(JsonElement inventory)
+    {
+        var result = new List<PriceLevel>();
+        if (!inventory.TryGetProperty("priceMaps", out var priceMaps) || priceMaps.ValueKind != JsonValueKind.Array)
+            return result;
+
+        foreach (var pm in priceMaps.EnumerateArray())
+        {
+            result.Add(new PriceLevel
+            {
+                PriceLevelId = pm.TryGetProperty("priceLevelId", out var id) ? id.GetInt64() : 0,
+                DisplayName = pm.TryGetProperty("displayName", out var dn) ? dn.GetString() ?? "" : "",
+                Zone = pm.TryGetProperty("zone", out var z) ? z.GetString() ?? "" : "",
+                Price = pm.TryGetProperty("price", out var p) ? p.GetDouble() : 0.0,
+                DisplayPrice = pm.TryGetProperty("displayPrice", out var dp) ? dp.GetDouble() : 0.0,
+                PriceClass = pm.TryGetProperty("class", out var pc) ? pc.GetString() ?? "" : "",
+            });
+        }
+        return result;
+    }
 }

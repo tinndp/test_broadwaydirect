@@ -119,7 +119,7 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req, BroadwayDir
 
     var seats = SeatGrouper.SeatsFromInventory(json);
     var listings = SeatGrouper.GroupIntoListings(seats, rules);
-    var priceLevels = SqliteStorage.ParsePriceLevelsFromInventory(json);
+    var priceLevels = SeatGrouper.ParsePriceLevelsFromInventory(json);
 
     MirrorToMongo(parsedUrl.Host, req.EventId, json, priceLevels, listings);
 

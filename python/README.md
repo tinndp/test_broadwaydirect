@@ -36,11 +36,12 @@ business step you'll need to build/integrate yourself - out of scope here.
 broadwaydirect/
   client.py        - calls the getbymonth + eventinventory APIs (with retry/backoff)
   models.py         - Event, PriceLevel, Seat, Listing (dataclasses)
-  grouping.py       - parses mapSeatsKey, SIDES/CENTER/Box rules, groups contiguous seats
-  storage.py        - SQLite (relational schema) + CSV export helpers (used by reprocess.py)
-  mongo_storage.py  - MongoDB mirror (raw_events + cleaned_events), used by api.py
-  reprocess.py      - rebuilds SQLite/CSV/Mongo cleaned_events from raw JSON already in
-                      Mongo, without calling the API again (see its own docstring)
+  grouping.py       - parses mapSeatsKey, SIDES/CENTER/Box rules, groups contiguous seats,
+                      also parses price levels (parse_price_levels_from_inventory)
+  mongo_storage.py  - MongoDB store (raw_events + cleaned_events), used by api.py - the only
+                      persisted store (SQLite/storage.py was removed, see "MongoDB vs SQL" below)
+  reprocess.py      - rebuilds Mongo cleaned_events (and optionally a CSV) from raw JSON
+                      already in Mongo, without calling the API again (see its own docstring)
   api.py            - HTTP API, the only fetch entry point (see below)
 config/
   section_rules.json - section naming rules, EDIT PER VENUE
@@ -148,7 +149,7 @@ future ticketing platform just writes more documents with a different
 - `raw_events` - the API response verbatim, unmodified - used for
   cross-checking/debugging or re-grouping later without calling the API again.
 - `cleaned_events` - the grouped result (`Event` metadata + `PriceLevel`s +
-  `Listing`s), same shape `reprocess.py` produces in SQLite/CSV.
+  `Listing`s), same shape `reprocess.py` produces.
 
 Writes are best-effort: if MongoDB is unreachable, a warning is logged but
 the HTTP response still succeeds with the fetched JSON.
@@ -158,26 +159,31 @@ Note: since `api.py` only calls `eventinventory` (not `getbymonth`), saved
 isn't part of the API contract today. To add it, extend the request and
 thread it into the `Event(...)` built in `_mirror_to_mongo()`.
 
-`reprocess.py` rebuilds SQLite/CSV (and optionally Mongo `cleaned_events`)
-from whatever's in `raw_events`, without calling the live API again -
-useful after changing `section_rules.json`:
+`reprocess.py` rebuilds Mongo `cleaned_events` (and optionally a CSV export,
+built directly from the same in-memory data, no SQLite involved) from
+whatever's in `raw_events`, without calling the live API again - useful
+after changing `section_rules.json`:
 
 ```bash
 python -m broadwaydirect.reprocess --mongo-uri mongodb://localhost:27017 \
-    --db rebuilt.db --csv rebuilt.csv
+    --csv rebuilt.csv
 ```
 
-**Why Mongo here despite generally recommending SQL below:** it's a
-natural fit for mirroring raw API responses verbatim (schema-free) and
-gives `api.py` a queryable "cleaned" copy without requiring a SQL server
-just to serve HTTP requests. For actual reporting/analytics (joins across
-shows, "total tickets left by section" style queries), still prefer
-relational storage - SQLite for small scale, Postgres for concurrent
-writers - since the data here has a fixed schema and SQL's JOIN/GROUP BY/
-indexing is a better fit than Mongo's document queries for that. Use
-`storage.py`/`reprocess.py` to produce that SQLite/CSV copy from whatever's
-mirrored in Mongo whenever you need it (this was the original
-"MongoDB vs SQL" consideration in the requirements doc).
+**MongoDB vs SQL (updated decision):** this project originally kept a SQLite
+mirror (`storage.py`) alongside Mongo, on the reasoning that relational
+storage is a better fit than Mongo's document queries for reporting/
+analytics (joins across shows, "total tickets left by section" style
+queries) - see git history for that version if you need it back. `storage.py`
+was removed and MongoDB is now the **only** persisted store, to match how
+this data is actually consumed downstream: the .NET Rowing-integration bots
+this project feeds into (TMCrawler and BroadwayCrawler, in the main
+ETECH.Application.MarkAutomation repo) only ever read/write listing data via
+Mongo, never SQL, for the exact same kind of grouped-listing data - keeping
+a SQLite copy here that nothing downstream reads added persistence surface
+without a corresponding consumer. If you need relational
+reporting/analytics later, `reprocess.py` still has all the (event,
+price_levels, listings) data in memory each pass - point it at whatever SQL
+target you need instead of (or alongside) `--csv`.
 
 ## Cloudflare risk on tickets.broadwaydirect.com (RESOLVED)
 

@@ -12,8 +12,9 @@ Two implementations live in this repo:
   on macOS/Linux/Windows), fully working and verified end-to-end. The HTTP
   API (`api.py`) is the only fetch entry point - it fetches, groups into
   listings, returns both the raw and grouped data in the response, and
-  mirrors both to MongoDB. `reprocess.py` can rebuild SQLite/CSV/Mongo from
-  what's already stored, without calling the live API again.
+  mirrors both to MongoDB (the only persisted store - no SQLite). `reprocess.py`
+  can rebuild Mongo's cleaned_events (and optionally a CSV) from what's
+  already stored, without calling the live API again.
 - **[`dotnet/`](dotnet/README_DOTNET.md)** - a .NET 8 port
   (WebView2 for the Cloudflare bypass). **Windows-only** for the fetch
   layer (WebView2 requirement) and not yet verified working end-to-end on

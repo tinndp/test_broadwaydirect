@@ -20,7 +20,7 @@ client's exact rules:
 import json
 from typing import Iterable
 
-from .models import Seat, Listing
+from .models import Seat, Listing, PriceLevel
 
 
 DEFAULT_RULES = {
@@ -162,3 +162,24 @@ def _make_listing(label, row, plid, seating_type, run) -> Listing:
         seat_nums=[s.seat_num for s in run],
         seating_type=seating_type,
     )
+
+
+def parse_price_levels_from_inventory(inventory: dict) -> list:
+    """Parses priceMaps (raw JSON from the eventinventory API) into
+    list[PriceLevel]. Moved here from the now-removed storage.py - it's pure
+    inventory-JSON parsing (same input as seats_from_inventory above), not
+    actually SQLite-specific; it just used to live next to the SQLite write
+    helpers that consumed its output. Mirrors
+    dotnet/BroadwayDirect.Core/Grouping/SeatGrouper.cs's
+    ParsePriceLevelsFromInventory (moved there for the same reason)."""
+    out = []
+    for pm in inventory.get("priceMaps", []) or []:
+        out.append(PriceLevel(
+            price_level_id=pm.get("priceLevelId"),
+            display_name=pm.get("displayName", ""),
+            zone=pm.get("zone", ""),
+            price=pm.get("price", 0.0),
+            display_price=pm.get("displayPrice", 0.0),
+            price_class=pm.get("class", ""),
+        ))
+    return out
