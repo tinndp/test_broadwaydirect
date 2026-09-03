@@ -63,7 +63,7 @@ public class MongoStore
     }
 
     public void SaveCleanedEvent(string source, string eventId, IEnumerable<PriceLevel> priceLevels,
-        IEnumerable<Listing> listings, string? seriesId = null)
+        IEnumerable<ICleanedListing> listings, string? seriesId = null)
     {
         var key = new BsonDocument { ["source"] = source, ["event_id"] = eventId };
         var doc = new BsonDocument(key)

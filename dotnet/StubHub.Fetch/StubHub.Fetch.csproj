@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WebView2 only runs on Windows - same constraint as BroadwayDirect.Fetch.
+         EnableWindowsTargeting lets this build-check (not run) on macOS/Linux. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StubHub.Core\StubHub.Core.csproj" />
+    <ProjectReference Include="..\BroadwayDirect.Core\BroadwayDirect.Core.csproj" />
+    <!-- Reused as-is: WebView2Host (the STA message-loop pump). The rest of the
+         DataDome browser orchestration is StubHub-specific and lives here -
+         mirrors python/stubhub reusing only broadwaydirect.proxy_pool, not its client. -->
+    <ProjectReference Include="..\BroadwayDirect.Fetch\BroadwayDirect.Fetch.csproj" />
+  </ItemGroup>
+
+</Project>

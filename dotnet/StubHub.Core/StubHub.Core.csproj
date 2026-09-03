@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Reuses BroadwayDirect.Core for Event / PriceLevel / MongoStore so both
+       sources write the same cleaned_events shape - mirrors how
+       python/stubhub imports broadwaydirect.models + broadwaydirect.mongo_storage. -->
+  <ItemGroup>
+    <ProjectReference Include="..\BroadwayDirect.Core\BroadwayDirect.Core.csproj" />
+  </ItemGroup>
+
+</Project>

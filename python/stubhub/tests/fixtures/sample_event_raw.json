@@ -1,0 +1,94 @@
+{
+  "eventId": "159257698",
+  "eventName": "Washington Nationals at Los Angeles Dodgers",
+  "eventUrl": "https://www.stubhub.com/los-angeles-dodgers-los-angeles-tickets-9-4-2026/event/159257698/",
+  "venueName": "UNIQLO Field at Dodger Stadium",
+  "venueId": 1817,
+  "venueConfigId": 688070,
+  "formattedEventDateTime": "Fri Sep 04 2026 7:10 PM",
+  "sportsEvent": {
+    "@context": "http://schema.org",
+    "@type": "SportsEvent",
+    "name": "Washington Nationals at Los Angeles Dodgers",
+    "startDate": "2026-09-04T19:10:00",
+    "url": "https://www.stubhub.com/los-angeles-dodgers-los-angeles-tickets-9-4-2026/event/159257698/",
+    "location": {
+      "@type": "Place",
+      "name": "UNIQLO Field at Dodger Stadium",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "1000 Vin Scully Ave",
+        "addressLocality": "Los Angeles",
+        "addressRegion": "California",
+        "postalCode": "90012",
+        "addressCountry": "USA"
+      }
+    },
+    "offers": {"@type": "AggregateOffer", "priceCurrency": "USD", "lowPrice": 38.73}
+  },
+  "totalCount": 733,
+  "ticketClasses": [
+    {"ticketClassId": 3875, "name": "Infield Box Value", "cssPostFix": "teal", "genericMapSection": "", "minListingsRawPrice": 0, "isSoldOut": false, "isSellingFast": false, "isSeated": false, "isStanding": false},
+    {"ticketClassId": 3631, "name": "Infield Reserve", "cssPostFix": "purple2", "genericMapSection": "", "minListingsRawPrice": 0, "isSoldOut": false, "isSellingFast": false, "isSeated": false, "isStanding": false},
+    {"ticketClassId": 1957, "name": "Top Deck", "cssPostFix": "green", "genericMapSection": "", "minListingsRawPrice": 0, "isSoldOut": false, "isSellingFast": false, "isSeated": false, "isStanding": false},
+    {"ticketClassId": 3907, "name": "Home Run Seats", "cssPostFix": "purple3", "genericMapSection": "", "minListingsRawPrice": 0, "isSoldOut": true, "isSellingFast": false, "isSeated": false, "isStanding": false}
+  ],
+  "ticketClassPopupData": {
+    "3875": {"count": 20, "ticketCount": 50, "rawMinPrice": 118.87, "formattedMinPrice": "$119"},
+    "3631": {"count": 68, "ticketCount": 349, "rawMinPrice": 59.31, "formattedMinPrice": "$60"},
+    "1957": {"count": 39, "ticketCount": 133, "rawMinPrice": 57.37, "formattedMinPrice": "$58"}
+  },
+  "items": [
+    {
+      "id": 12733224978, "listingId": 12733224978, "eventId": 159257698,
+      "section": "34FD", "sectionId": 1473931, "sectionMapName": "34FD", "sectionType": 1,
+      "row": "G", "rowId": 1392230, "rowContent": "Row G", "seat": "_",
+      "seatFrom": "", "seatTo": "", "hasSeatDetails": false,
+      "availableTickets": 4, "availableQuantities": [1, 2, 4], "maxQuantity": 4,
+      "ticketClass": 3875, "ticketClassName": "Infield Box Value", "isZoneTicketClass": false,
+      "rawPrice": 49.97, "price": "$50", "formattedTotalPrice": "$100", "formattedFees": "",
+      "faceValue": 110.46, "faceValueCurrencyCode": "USD", "listingCurrencyCode": "USD", "buyerCurrencyCode": "USD",
+      "ticketTypeId": 20, "ticketTypeName": "Mobile ticket", "ticketTypeGroupId": 4, "listingTypeId": 1,
+      "isSeatedTogether": true, "hasListingNotes": true,
+      "listingNotes": [{"listingNoteId": -2, "formattedListingNoteContent": "Front row of section"}],
+      "inventoryListingScore": {"raw": 0.71, "nested": {"a": 1}},
+      "isUnmappedSection": false, "isSpeculativeRow": false,
+      "formattedDealScore": "4.9", "createdDateTime": "2026-05-19T02:16:16.550Z",
+      "isMLBVerified": false, "isSponsored": false, "isMirrorListing": false,
+      "isCheapestListing": true, "isMostAffordable": false
+    },
+    {
+      "id": 13904675239, "listingId": 13904675239, "eventId": 159257698,
+      "section": "18RS", "sectionId": 1476466, "sectionMapName": "18RS", "sectionType": 1,
+      "row": "GG", "rowId": 2042712, "rowContent": "Row GG", "seat": "1_3",
+      "seatFrom": "1", "seatTo": "3", "hasSeatDetails": true,
+      "availableTickets": 3, "availableQuantities": [1, 2, 3], "maxQuantity": 3,
+      "ticketClass": 3631, "ticketClassName": "Infield Reserve", "isZoneTicketClass": false,
+      "rawPrice": 85.1, "price": "$85", "formattedTotalPrice": "$255", "formattedFees": "",
+      "faceValue": 0, "faceValueCurrencyCode": "USD", "listingCurrencyCode": "USD", "buyerCurrencyCode": "USD",
+      "ticketTypeId": 20, "ticketTypeName": "Mobile ticket", "ticketTypeGroupId": 4, "listingTypeId": 1,
+      "isSeatedTogether": true, "hasListingNotes": false, "listingNotes": [],
+      "isUnmappedSection": false, "isSpeculativeRow": false,
+      "formattedDealScore": "8.1", "createdDateTime": "2026-08-30T11:02:00.000Z",
+      "isMLBVerified": true, "isSponsored": false, "isMirrorListing": false,
+      "isCheapestListing": false, "isMostAffordable": false
+    },
+    {
+      "id": 13909934699, "listingId": 13909934699, "eventId": 159257698,
+      "section": "4TD", "sectionId": 1473986, "sectionMapName": "4TD", "sectionType": 1,
+      "row": "J", "rowId": 1400111, "rowContent": "Row J", "seat": "_",
+      "seatFrom": "", "seatTo": "", "hasSeatDetails": false,
+      "availableTickets": 2, "availableQuantities": [1, 2], "maxQuantity": 2,
+      "ticketClass": 1957, "ticketClassName": "Top Deck", "isZoneTicketClass": true,
+      "rawPrice": 45.9, "price": "$46", "formattedTotalPrice": "$92", "formattedFees": "",
+      "faceValue": 0, "faceValueCurrencyCode": "USD", "listingCurrencyCode": "USD", "buyerCurrencyCode": "USD",
+      "ticketTypeId": 20, "ticketTypeName": "Mobile ticket", "ticketTypeGroupId": 4, "listingTypeId": 1,
+      "isSeatedTogether": false, "hasListingNotes": false, "listingNotes": [],
+      "isUnmappedSection": false, "isSpeculativeRow": false,
+      "formattedDealScore": "9.0", "createdDateTime": "2026-09-01T00:00:00.000Z",
+      "isMLBVerified": false, "isSponsored": true, "isMirrorListing": false,
+      "isCheapestListing": false, "isMostAffordable": true
+    }
+  ],
+  "coverage": {"collected": 3, "totalCount": 733, "sections": 238}
+}

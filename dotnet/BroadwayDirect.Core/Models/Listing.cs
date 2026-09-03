@@ -4,7 +4,7 @@ namespace BroadwayDirect.Core.Models;
 /// A group of contiguous seats, already labeled per the SIDES/CENTER rules,
 /// ready to feed into the inventory-management step (not automatically pushed anywhere).
 /// </summary>
-public class Listing
+public class Listing : ICleanedListing
 {
     public string SectionLabel { get; init; } = "";
     public string Row { get; init; } = "";
