@@ -27,7 +27,6 @@
   <ItemGroup>
     <None Include="Fixtures\sample_event_raw.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures\sample_section_ssr.html" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="Fixtures\sample_category_ssr.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

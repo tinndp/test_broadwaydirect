@@ -33,11 +33,10 @@ extract.py   - bracket-count JSON extractor for the embedded state
                logic in-page for speed.
 adapter.py   - raw StubHub dict -> price_levels (one per ticket class) +
                listings (one per grid item) + Event metadata.
-client.py    - StubHubClient (patchright). fetch_event_inventory(url) sweeps
-               every section; discover(url) turns a category/grouping/venue
-               URL into its event list.
+client.py    - StubHubClient (patchright). fetch_event_inventory(url)
+               grid-POST primary + per-section sweep fallback.
 api.py       - FastAPI. POST /api/eventinventory (same contract as
-               broadwaydirect) + POST /api/discover.
+               broadwaydirect).
 reprocess.py - rebuild cleaned_events (+ optional CSV) from raw_events
                where source matches "stubhub", no re-crawl.
 tests/       - test_extract.py, test_adapter.py (fixtures from real data).
@@ -88,27 +87,6 @@ regardless of how many each sells) - the "How many tickets?" popup on the
 site is a UI filter the crawler never touches. `cleaned_events` stores only
 the 7 shared listing keys; `raw_price`/`currency` live in `raw_events` and
 the HTTP response only.
-
-### `POST /api/discover`
-
-```bash
-curl -X POST http://localhost:8100/api/discover \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://www.stubhub.com/los-angeles-dodgers-tickets/category/138300832"}'
-```
-
-```json
-{ "sourceUrl": "...", "scope": "all", "totalCount": 38, "collected": 38,
-  "events": [ {"eventId": 159257696, "url": "...", "name": "...", "formattedDate": "Sep 02",
-               "venueName": "...", "hasActiveListings": true}, ... ] }
-```
-
-Returns the event list only - **no fan-out**. The caller loops each
-`events[].eventId` + `events[].url` back into `/api/eventinventory`,
-keeping control of rate limiting / retry / resume. `scope`: `"all"`
-(default, every location) or `"home"` (the venue-filtered subset).
-Pagination walks `?restPage=N` / `?primaryPage=N` until `totalCount` is
-reached or the server clamps an out-of-range page back to page 1.
 
 ## Fetch path: grid POST vs section sweep
 
@@ -171,12 +149,13 @@ reject headless Chromium.
 ## Tests
 
 ```bash
-python3 -m pytest stubhub/tests/ -q      # 15 tests (extract + adapter)
+python3 -m pytest stubhub/tests/ -q
 ```
 
 Covers the bracket extractor (incl. the deep-nesting case the report's
-naive counter failed on), the discovery-grid parser, the JSON-LD parser,
-and every branch of the field mapping (seated-together vs piggyback, seat
+naive counter failed on), the JSON-LD parser, the section-spec split
+(venue prefix vs ticketClass prefix), and every branch of the field
+mapping (seated-together vs piggyback, seat
 detail vs none, quantity == availableTickets not seat-key count,
 price-level price sourced from `ticketClassPopupData`). The live browser
 path (`client.py`) is not unit-tested - run the API against a real event.

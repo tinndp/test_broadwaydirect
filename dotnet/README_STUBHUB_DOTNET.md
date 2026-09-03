@@ -23,16 +23,15 @@ StubHub.Core/     - JsonTokenExtractor (embedded-JSON bracket parser),
                     except the store needs a live Mongo. Ports
                     python/stubhub/extract.py + adapter.py + models.py.
 StubHub.Fetch/    - StubHubClient (grid-POST primary + section-sweep fallback +
-                    retry passes + discover), DataDomeBrowser (one real WebView2
-                    window per proxy, fresh cookies per event, in-page evaluate
-                    via postMessage), StubHubScripts (the in-page JS, verbatim
-                    from client.py). Windows-only, NOT yet run.
+                    retry passes), DataDomeBrowser (one real WebView2 window per
+                    proxy, fresh cookies per event, in-page evaluate via
+                    postMessage), StubHubScripts (the in-page JS, verbatim from
+                    client.py). Windows-only, NOT yet run.
                     Reuses BroadwayDirect.Fetch.WebView2Host (the STA pump) only.
-StubHub.Api/      - ASP.NET Core Minimal API: POST /api/eventinventory +
-                    POST /api/discover. Same response contract as
-                    python/stubhub/api.py and BroadwayDirect.Api.
+StubHub.Api/      - ASP.NET Core Minimal API: POST /api/eventinventory. Same
+                    response contract as python/stubhub/api.py.
 StubHub.Tests/    - xUnit: port of test_extract.py + test_adapter.py (same
-                    fixtures) + StubHubInventoryMapperTests. 21/21 green on macOS.
+                    fixtures) + StubHubInventoryMapperTests. 20/20 green on macOS.
 ```
 
 ### Shared-model note in `BroadwayDirect.Core`
@@ -87,13 +86,6 @@ inventory dict (with a nested `coverage` block: `collected` / `totalCount` /
 `coverage_pct` / `method` / `sections` / `sections_failed` / `note`). `listings[]`
 carries the 7 shared keys plus StubHub's `raw_price` / `currency`. Same contract
 as `python/stubhub/api.py`.
-
-### `POST /api/discover`
-
-Body: `{ url, scope?, maxPages?, proxy? }` - `url` = a `/category/` , `/grouping/` ,
-`/venue/` or `/performer/` page. Returns `{ sourceUrl, scope, totalCount,
-collected, events[] }` (event list only; loop each `eventId` back into
-`/api/eventinventory`).
 
 ### Mongo persistence (env vars, all optional)
 

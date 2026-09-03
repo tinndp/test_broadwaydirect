@@ -5,9 +5,8 @@ namespace StubHub.Fetch;
 /// <see cref="DataDomeBrowser.EvaluateJsonAsync"/>. Each constant is ONE arrow
 /// function expression <c>async (arg) =&gt; { ... }</c>, transcribed verbatim from
 /// the same blobs in python/stubhub/client.py (<c>_JS_BOOTSTRAP</c> /
-/// <c>_JS_GRID_POST</c> / <c>_JS_SECTION_BATCH</c> / <c>_JS_DISCOVER_PAGE</c>),
-/// with <c>COMMON_QS</c> already spliced in and <c>_JS_HELPERS</c> concatenated
-/// where the Python side splices it.
+/// <c>_JS_GRID_POST</c> / <c>_JS_SECTION_BATCH</c>), with <c>COMMON_QS</c> already
+/// spliced in and <c>_JS_HELPERS</c> concatenated where the Python side splices it.
 ///
 /// Result flows back through <c>window.chrome.webview.postMessage</c>, not the
 /// script return value - see the NOTE in
@@ -135,30 +134,6 @@ internal static class StubHubScripts
           .catch(() => { failed.push(sp); return []; });
       }));
       return { items: results.flat(), failed };
-    }
-    """";
-
-    /// <summary>One page of a discovery grid ("primaryGrid" / "restGrid").</summary>
-    public static readonly string DiscoverPage = "async (arg) => {" + Helpers + """"
-      const path = arg.path, param = arg.param, n = arg.n, grid = arg.grid;
-      try {
-        const r = await fetch(path + '?' + param + '=' + n, { credentials: 'include' });
-        if(r.status !== 200) return { status: r.status };
-        const h = await r.text();
-        const a = h.indexOf('"' + grid + '":{');
-        if(a < 0) return { status: 200, items: [], pageIndex: null, totalCount: null };
-        const items = __ex(h.slice(a), '"items":') || [];
-        const tail = h.slice(a, a + 60000);
-        const gi = (tail.match(/"pageIndex":(-?\d+)/) || [])[1];
-        const tc = (tail.match(/"totalCount":(-?\d+)/) || [])[1];
-        const ps = (tail.match(/"pageSize":(-?\d+)/) || [])[1];
-        return {
-          status: 200, items,
-          pageIndex: gi != null ? parseInt(gi,10) : null,
-          totalCount: tc != null ? parseInt(tc,10) : null,
-          pageSize: ps != null ? parseInt(ps,10) : null,
-        };
-      } catch(e){ return { status: -1, error: String(e) }; }
     }
     """";
 

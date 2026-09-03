@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from stubhub.extract import (
-    extract_json_token, extract_grid_items, extract_named_grid,
+    extract_json_token, extract_grid_items,
     extract_sports_event, event_id_from_url,
 )
 
@@ -39,21 +39,6 @@ def test_extract_grid_items_handles_deep_nesting():
 
 def test_extract_grid_items_empty_on_challenge_page():
     assert extract_grid_items("<html>Please enable JS</html>") == []
-
-
-def test_extract_named_grid():
-    html = _read("sample_category_ssr.html")
-    rest = extract_named_grid(html, "restGrid")
-    assert rest["totalCount"] == 38
-    assert rest["pageIndex"] == 0
-    assert rest["pageSize"] == 6
-    assert [e["eventId"] for e in rest["items"]] == [159257696, 160436262]
-
-    primary = extract_named_grid(html, "primaryGrid")
-    assert primary["totalCount"] == 28
-    assert len(primary["items"]) == 1
-
-    assert extract_named_grid(html, "noSuchGrid") is None
 
 
 def test_extract_sports_event():

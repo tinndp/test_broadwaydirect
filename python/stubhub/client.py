@@ -32,9 +32,6 @@ Strategy (from the extraction report, re-verified live 2026-09):
      (extraction-report Step 6).
   5. Dedupe listings by `id` (== `listingId`), assemble the raw dict that
      adapter.py consumes and mongo_storage stores in raw_events.
-
-`discover()` turns a category / grouping / venue URL into the list of its
-events, paginating the server-rendered `performerGridSurface` grid.
 """
 
 import asyncio
@@ -174,28 +171,6 @@ _JS_SECTION_BATCH = ("async (arg) => {" + _JS_HELPERS + r"""
   return { items: results.flat(), failed };
 }""") % COMMON_QS
 
-_JS_DISCOVER_PAGE = "async (arg) => {" + _JS_HELPERS + r"""
-  const path = arg.path, param = arg.param, n = arg.n, grid = arg.grid;
-  try {
-    const r = await fetch(path + '?' + param + '=' + n, { credentials: 'include' });
-    if(r.status !== 200) return { status: r.status };
-    const h = await r.text();
-    const a = h.indexOf('"' + grid + '":{');
-    if(a < 0) return { status: 200, items: [], pageIndex: null, totalCount: null };
-    const items = __ex(h.slice(a), '"items":') || [];
-    const tail = h.slice(a, a + 60000);
-    const gi = (tail.match(/"pageIndex":(-?\d+)/) || [])[1];
-    const tc = (tail.match(/"totalCount":(-?\d+)/) || [])[1];
-    const ps = (tail.match(/"pageSize":(-?\d+)/) || [])[1];
-    return {
-      status: 200, items,
-      pageIndex: gi != null ? parseInt(gi,10) : null,
-      totalCount: tc != null ? parseInt(tc,10) : null,
-      pageSize: ps != null ? parseInt(ps,10) : null,
-    };
-  } catch(e){ return { status: -1, error: String(e) }; }
-}"""
-
 _CHALLENGE_MARKERS = ("Please enable JS and disable", "geo.captcha-delivery.com")
 
 
@@ -235,7 +210,7 @@ class StubHubClient:
         grid POST is capped, use a ROTATING residential `proxy`.**
 
         One browser is launched for the client's lifetime; a fresh CONTEXT is
-        opened per fetch_event_inventory / discover call for cookie isolation."""
+        opened per fetch_event_inventory call for cookie isolation."""
         self.headless = headless
         # accept either "scheme://[user:pass@]host:port" or the raw
         # "host:port:user:pass" a provider hands out (same as broadwaydirect)
@@ -560,67 +535,6 @@ class StubHubClient:
                 await asyncio.sleep(cur_delay)
         return failed_all
 
-    # -- discovery -------------------------------------------------------
-    async def discover(self, catalog_url: str, scope: str = "all",
-                       max_pages: int = 50) -> dict:
-        """Turn a /category/ , /grouping/ or /venue/ URL into its event list.
-        scope="all" walks restGrid (every location); scope="home" walks
-        primaryGrid (the location-filtered subset)."""
-        grid = "restGrid" if scope != "home" else "primaryGrid"
-        param = "restPage" if grid == "restGrid" else "primaryPage"
-        path = urlparse(catalog_url).path
-
-        ctx = page = None
-        for attempt in range(1, self.retries + 1):
-            ctx, page = await self._open_page(catalog_url)
-            try:
-                await page.evaluate("1")   # confirm live before the loop
-                break
-            except Exception as e:
-                await ctx.close()
-                ctx = None
-                if attempt == self.retries:
-                    raise RuntimeError(f"stubhub: discover page unstable for "
-                                       f"{catalog_url} ({e})")
-                await asyncio.sleep(2.0 * attempt)
-        try:
-            events: dict = {}
-            total_count = None
-            for n in range(1, max_pages + 1):
-                try:
-                    res = await page.evaluate(
-                        _JS_DISCOVER_PAGE,
-                        {"path": path, "param": param, "n": n, "grid": grid})
-                except Exception as e:
-                    print(f"  [stubhub] discover page {n} evaluate failed ({e})",
-                          file=sys.stderr)
-                    break
-                if not res or res.get("status") != 200:
-                    break
-                # server clamps an out-of-range page back to page 1 -> stop
-                if res.get("pageIndex") is not None and res["pageIndex"] != n - 1:
-                    break
-                page_items = res.get("items") or []
-                if not page_items:
-                    break
-                total_count = res.get("totalCount") or total_count
-                for ev in page_items:
-                    eid = ev.get("eventId")
-                    if eid is not None:
-                        events[eid] = _slim_event(ev)
-                if total_count is not None and len(events) >= total_count:
-                    break
-            return {
-                "sourceUrl": catalog_url,
-                "scope": scope,
-                "totalCount": total_count,
-                "collected": len(events),
-                "events": list(events.values()),
-            }
-        finally:
-            if ctx is not None:
-                await ctx.close()
-
 
 def _ticket_class_ids(boot: dict) -> set:
     """ticketClassId values for this event, as strings. Used only as a guard:
@@ -669,11 +583,3 @@ def _section_specs(popup_keys, ticket_class_ids=None) -> list:
             seen.add(dedupe_key)
             out.append({"sec": sid, "tc": tc})
     return out
-
-
-def _slim_event(ev: dict) -> dict:
-    keep = ("eventId", "name", "url", "formattedDate", "formattedTime",
-            "venueId", "venueName", "formattedVenueLocation", "venueCity",
-            "venueStateProvince", "countryCode", "hasActiveListings",
-            "eventAvailabilityState", "allowPublicPurchase", "isParkingEvent")
-    return {k: ev.get(k) for k in keep if k in ev}

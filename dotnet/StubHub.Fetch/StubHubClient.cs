@@ -274,81 +274,6 @@ public sealed class StubHubClient : IAsyncDisposable
         return failedAll;
     }
 
-    // -- discovery ----------------------------------------------------------
-    /// <summary>Turn a <c>/category/</c>, <c>/grouping/</c>, <c>/venue/</c> or
-    /// <c>/performer/</c> URL into its event list. <paramref name="scope"/>="all"
-    /// walks restGrid (every location); "home" walks primaryGrid.</summary>
-    public async Task<JsonElement> DiscoverAsync(
-        string catalogUrl, string scope = "all", int maxPages = 50, CancellationToken ct = default)
-    {
-        var grid = scope != "home" ? "restGrid" : "primaryGrid";
-        var param = grid == "restGrid" ? "restPage" : "primaryPage";
-        var path = new Uri(catalogUrl).AbsolutePath;
-
-        for (var attempt = 1; attempt <= _opt.Retries; attempt++)
-        {
-            await _browser.OpenFreshAsync(catalogUrl);
-            try
-            {
-                await _browser.EvaluateJsonAsync("async () => 1", new { });   // confirm live
-                break;
-            }
-            catch (Exception e)
-            {
-                if (attempt == _opt.Retries)
-                    throw new InvalidOperationException(
-                        $"stubhub: discover page unstable for {catalogUrl} ({e.Message})");
-                await Task.Delay(TimeSpan.FromSeconds(2.0 * attempt), ct);
-            }
-        }
-
-        var events = new Dictionary<string, JsonNode?>();
-        int? totalCount = null;
-        for (var nn = 1; nn <= maxPages; nn++)
-        {
-            JsonElement res;
-            try
-            {
-                res = await _browser.EvaluateJsonAsync(
-                    StubHubScripts.DiscoverPage, new { path, param, n = nn, grid });
-            }
-            catch (Exception e)
-            {
-                Console.Error.WriteLine($"  [stubhub] discover page {nn} evaluate failed ({e.Message})");
-                break;
-            }
-
-            if (res.ValueKind != JsonValueKind.Object || IntOrNull(res, "status") != 200) break;
-            // server clamps an out-of-range page back to page 1 -> stop
-            var pageIndex = IntOrNull(res, "pageIndex");
-            if (pageIndex is { } pi && pi != nn - 1) break;
-
-            var pageItems = ArrayItems(res, "items");
-            if (pageItems.Count == 0) break;
-            totalCount = IntOrNull(res, "totalCount") ?? totalCount;
-
-            foreach (var ev in pageItems)
-            {
-                var eid = ev.ValueKind == JsonValueKind.Object &&
-                          ev.TryGetProperty("eventId", out var e2) && e2.ValueKind != JsonValueKind.Null
-                    ? e2.ToString()
-                    : null;
-                if (eid != null) events[eid] = SlimEvent(ev);
-            }
-            if (totalCount is { } t && events.Count >= t) break;
-        }
-
-        var outObj = new JsonObject
-        {
-            ["sourceUrl"] = catalogUrl,
-            ["scope"] = scope,
-            ["totalCount"] = totalCount,
-            ["collected"] = events.Count,
-            ["events"] = new JsonArray(events.Values.Select(v => v?.DeepClone()).ToArray()),
-        };
-        return JsonSerializer.SerializeToElement(outObj);
-    }
-
     // -- helpers ------------------------------------------------------------
     private StubHubFetchOptions Apply(StubHubFetchOverrides? ov)
     {
@@ -368,21 +293,6 @@ public sealed class StubHubClient : IAsyncDisposable
         };
     }
 
-    private static readonly string[] SlimKeys =
-    {
-        "eventId", "name", "url", "formattedDate", "formattedTime", "venueId", "venueName",
-        "formattedVenueLocation", "venueCity", "venueStateProvince", "countryCode",
-        "hasActiveListings", "eventAvailabilityState", "allowPublicPurchase", "isParkingEvent",
-    };
-
-    private static JsonNode? SlimEvent(JsonElement ev)
-    {
-        var o = new JsonObject();
-        foreach (var k in SlimKeys)
-            if (ev.TryGetProperty(k, out var v))
-                o[k] = JsonNode.Parse(v.GetRawText());
-        return o;
-    }
 
     /// <summary>A section-sweep work unit: a stadium section id plus, when the
     /// <c>sectionPopupData</c> prefix was a ticketClassId, that id (bare

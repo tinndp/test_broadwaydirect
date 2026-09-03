@@ -165,42 +165,6 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req) =>
     });
 });
 
-// POST /api/discover { url, scope?, maxPages?, proxy? }
-//   -> { sourceUrl, scope, totalCount, collected, events[] }
-// url = a /category/ , /grouping/ , /venue/ or /performer/ page. Returns the
-// event list only (no inventory) - the caller loops each event.eventId back into
-// /api/eventinventory.
-app.MapPost("/api/discover", async (DiscoverRequest req) =>
-{
-    if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var parsedUrl) ||
-        string.IsNullOrEmpty(parsedUrl.Scheme) || string.IsNullOrEmpty(parsedUrl.Host))
-        return Results.BadRequest(new { error = "invalid url" });
-
-    string[] segs = { "/category/", "/grouping/", "/venue/", "/performer/" };
-    if (!segs.Any(parsedUrl.AbsolutePath.Contains))
-        return Results.BadRequest(new
-        {
-            error = "url must be a /category/ , /grouping/ , /venue/ or /performer/ page",
-        });
-
-    var proxy = "";
-    if (!string.IsNullOrWhiteSpace(req.Proxy))
-    {
-        try { proxy = ProxyUri.Normalize(req.Proxy); }
-        catch (FormatException ex) { return Results.BadRequest(new { error = $"invalid proxy: {ex.Message}" }); }
-    }
-
-    try
-    {
-        var result = await GetClient(proxy).DiscoverAsync(req.Url, req.Scope, req.MaxPages);
-        return Results.Json(result);
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status502BadGateway);
-    }
-});
-
 app.Lifetime.ApplicationStopping.Register(() =>
 {
     foreach (var c in clients.Values)
@@ -216,5 +180,3 @@ app.Run();
 internal record EventInventoryRequest(
     string EventId, string Url, string? Proxy,
     bool? UseGridPost, int? Concurrency, double? BatchDelay);
-
-internal record DiscoverRequest(string Url, string Scope = "all", int MaxPages = 50, string? Proxy = null);

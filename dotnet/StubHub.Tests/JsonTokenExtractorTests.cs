@@ -58,18 +58,6 @@ public class JsonTokenExtractorTests
     }
 
     [Fact]
-    public void ExtractNamedGrid_RestGrid()
-    {
-        var rest = JsonTokenExtractor.ExtractNamedGrid(ReadFixture("sample_category_ssr.html"), "restGrid");
-        Assert.NotNull(rest);
-        Assert.Equal(38, rest!.TotalCount);
-        Assert.Equal(0, rest.PageIndex);
-        Assert.Equal(6, rest.PageSize);
-        Assert.Equal(new[] { 159257696L, 160436262L },
-            rest.Items.Select(e => e.GetProperty("eventId").GetInt64()));
-    }
-
-    [Fact]
     public void EventIdFromUrl()
     {
         Assert.Equal("159257698", JsonTokenExtractor.EventIdFromUrl(

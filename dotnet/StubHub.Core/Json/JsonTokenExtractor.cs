@@ -78,32 +78,6 @@ public static class JsonTokenExtractor
         return AsArray(items);
     }
 
-    public sealed record NamedGrid(
-        List<JsonElement> Items, int? PageIndex, int? PageSize, int? TotalCount, int? Remaining);
-
-    /// <summary>Return {items, pageIndex, pageSize, totalCount, remaining} for a
-    /// discovery grid ("primaryGrid" or "restGrid") from a category / grouping /
-    /// venue SSR response. Null if the grid isn't present.</summary>
-    public static NamedGrid? ExtractNamedGrid(string html, string gridName)
-    {
-        var anchor = $"\"{gridName}\":" + "{";
-        var a = html.IndexOf(anchor, StringComparison.Ordinal);
-        if (a < 0) return null;
-
-        var items = ExtractJsonToken(html, "\"items\":", a);
-        if (items is null) return null;
-
-        var tail = html.Substring(a, Math.Min(60000, html.Length - a));
-        int? Int(string field)
-        {
-            var mm = Regex.Match(tail, $"\"{field}\":(-?\\d+)");
-            return mm.Success ? int.Parse(mm.Groups[1].Value) : null;
-        }
-
-        return new NamedGrid(AsArray(items), Int("pageIndex"), Int("pageSize"),
-                             Int("totalCount"), Int("remaining"));
-    }
-
     /// <summary>Parse the schema.org SportsEvent / Event JSON-LD block (event name,
     /// startDate, location). Null if absent or unparseable.</summary>
     public static JsonElement? ExtractSportsEvent(string html)

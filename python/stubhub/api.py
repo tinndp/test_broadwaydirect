@@ -6,13 +6,6 @@ broadwaydirect/api.py so both sources feed one downstream schema.
         url = a .../event/<id>/ page. Fetches every section, normalizes,
         and mirrors raw + cleaned to MongoDB (source = "stubhub.com").
 
-    POST /api/discover        { url, scope?, maxPages?, proxy? }
-        -> { sourceUrl, scope, totalCount, collected, events[] }
-        url = a /category/ , /grouping/ or /venue/ page. Returns the event
-        list only (no inventory) - the caller loops each event.eventId back
-        into /api/eventinventory. No fan-out here on purpose: per-event
-        calls give the caller control over rate limiting / retry / resume.
-
 Run:
     cd python
     pip install -r requirements.txt
@@ -57,13 +50,6 @@ class EventInventoryRequest(BaseModel):
     useGridPost: bool = True
     concurrency: int = 3
     batchDelay: float = 1.0
-
-
-class DiscoverRequest(BaseModel):
-    url: str
-    scope: str = "all"
-    maxPages: int = 50
-    proxy: Optional[str] = None
 
 
 def _source(url: str) -> str:
@@ -180,27 +166,6 @@ async def event_inventory(req: EventInventoryRequest):
         "price_levels": [_price_level_dict(pl) for pl in price_levels],
         "listings": [_listing_dict(l) for l in listings],
     })
-
-
-@app.post("/api/discover")
-async def discover(req: DiscoverRequest):
-    parsed = urlparse(req.url)
-    if not parsed.scheme or not parsed.netloc:
-        return JSONResponse(status_code=400, content={"error": "invalid url"})
-    if not any(seg in parsed.path for seg in ("/category/", "/grouping/", "/venue/", "/performer/")):
-        return JSONResponse(status_code=400, content={
-            "error": "url must be a /category/ , /grouping/ , /venue/ or /performer/ page"})
-    try:
-        proxy = normalize_proxy(req.proxy) if req.proxy else None
-    except ValueError as e:
-        return JSONResponse(status_code=400, content={"error": f"invalid proxy: {e}"})
-
-    client = await _get_client(proxy)
-    try:
-        result = await client.discover(req.url, scope=req.scope, max_pages=req.maxPages)
-    except Exception as e:
-        return JSONResponse(status_code=502, content={"detail": str(e)})
-    return JSONResponse(content=result)
 
 
 @app.on_event("shutdown")

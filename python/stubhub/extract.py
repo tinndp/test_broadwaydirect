@@ -84,32 +84,6 @@ def extract_grid_items(html: str) -> list:
     return items or []
 
 
-def extract_named_grid(html: str, grid_name: str) -> Optional[dict]:
-    """Return {items, pageIndex, pageSize, totalCount, remaining} for a
-    discovery grid ("primaryGrid" or "restGrid") from a category/grouping/
-    venue SSR response. None if the grid isn't present."""
-    anchor = f'"{grid_name}":' + "{"
-    a = html.find(anchor)
-    if a < 0:
-        return None
-    items = extract_json_token(html, '"items":', start_from=a)
-    if items is None:
-        return None
-    tail = html[a:a + 60000]
-
-    def _int(field):
-        mm = re.search(rf'"{field}":(-?\d+)', tail)
-        return int(mm.group(1)) if mm else None
-
-    return {
-        "items": items,
-        "pageIndex": _int("pageIndex"),
-        "pageSize": _int("pageSize"),
-        "totalCount": _int("totalCount"),
-        "remaining": _int("remaining"),
-    }
-
-
 def extract_sports_event(html: str) -> Optional[dict]:
     """Parse the schema.org SportsEvent JSON-LD block (event name, startDate,
     location). Returns None if absent or unparseable."""
