@@ -41,8 +41,12 @@ MongoStore? GetMongo()
         if (mongo != null || mongoInitFailed) return mongo;
         try
         {
-            var uri = Environment.GetEnvironmentVariable("MONGO_URI") ?? "mongodb://localhost:27017";
-            var dbName = Environment.GetEnvironmentVariable("MONGO_DB") ?? "broadwaydirect";
+            // TEST: hardcoded to the shared broadwaydirect Mongo, same as
+            // BroadwayDirect.Api. Restore the env-var lines before merging.
+            //var uri = Environment.GetEnvironmentVariable("MONGO_URI") ?? "mongodb://localhost:27017";
+            //var dbName = Environment.GetEnvironmentVariable("MONGO_DB") ?? "broadwaydirect";
+            var uri = "mongodb://broadwaydirect_user:broadwaydirect123@192.168.100.2:27017/broadwaydirect";
+            var dbName = "broadwaydirect";
             mongo = new MongoStore(uri, dbName);
         }
         catch (Exception e)
