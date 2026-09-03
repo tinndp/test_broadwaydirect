@@ -1,11 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using BroadwayDirect.Core.Models;
 using BroadwayDirect.Core.Proxy;
-using BroadwayDirect.Core.Storage;
-using MongoDB.Bson;
 using StubHub.Core;
 using StubHub.Core.Json;
+using StubHub.Core.Storage;
 using StubHub.Fetch;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,18 +25,19 @@ var clients = new ConcurrentDictionary<string, StubHubClient>();
 StubHubClient GetClient(string proxy) =>
     clients.GetOrAdd(proxy, p => new StubHubClient(p, fetchOptions));
 
-// Lazily connects to MongoDB on first use; returns null (warns once) if
-// unreachable - persistence is best-effort, never fatal to the request.
-// 1:1 port of api.py's _get_mongo().
-MongoStore? mongo = null;
-var mongoInitFailed = false;
-var mongoLock = new object();
+// Lazily connects to MongoDB on first use. Unlike BroadwayDirect this is NOT a
+// best-effort mirror: the per-event StubHub_Inventories_NEW_{eventId} collection
+// is the ONLY place listing data lands, so a null store or a failed write is
+// fatal to the request (matches ETECH.Application.MarkAutomation's StubHubCrawler).
+StubHubInventoryStore? store = null;
+var storeInitFailed = false;
+var storeLock = new object();
 
-MongoStore? GetMongo()
+StubHubInventoryStore? GetStore()
 {
-    lock (mongoLock)
+    lock (storeLock)
     {
-        if (mongo != null || mongoInitFailed) return mongo;
+        if (store != null || storeInitFailed) return store;
         try
         {
             // TEST: hardcoded to the shared broadwaydirect Mongo, same as
@@ -47,46 +46,36 @@ MongoStore? GetMongo()
             //var dbName = Environment.GetEnvironmentVariable("MONGO_DB") ?? "broadwaydirect";
             var uri = "mongodb://broadwaydirect_user:broadwaydirect123@192.168.100.2:27017/broadwaydirect";
             var dbName = "broadwaydirect";
-            mongo = new MongoStore(uri, dbName);
+            store = new StubHubInventoryStore(uri, dbName);
         }
         catch (Exception e)
         {
-            mongoInitFailed = true;
-            Console.Error.WriteLine($"  !! MongoDB unreachable, persistence disabled this run: {e.Message}");
+            storeInitFailed = true;
+            Console.Error.WriteLine($"  !! MongoDB unreachable: {e.Message}");
         }
-        return mongo;
+        return store;
     }
 }
 
-// "https://www.stubhub.com/..." -> "stubhub.com" (drop a leading www.). This is
-// the `source` tag on both Mongo collections, shared across sources.
-static string SourceOf(Uri url)
+// Drop + rewrite StubHub_Inventories_NEW_{eventId} with one document per listing.
+// Throws if Mongo is unreachable or the write fails - the caller turns that into
+// a 5xx (the fetch succeeded but the data is not persisted anywhere).
+void PersistInventory(string eventId,
+    IEnumerable<BroadwayDirect.Core.Models.PriceLevel> priceLevels,
+    IEnumerable<StubHub.Core.Models.StubHubListing> listings)
 {
-    var host = url.Host.ToLowerInvariant();
-    return host.StartsWith("www.") ? host[4..] : host;
-}
-
-void MirrorToMongo(string source, string eventId, JsonElement raw,
-    IEnumerable<PriceLevel> priceLevels, IEnumerable<ICleanedListing> listings)
-{
-    var m = GetMongo();
-    if (m == null) return;
-    try
-    {
-        m.SaveRawEvent(source, eventId, BsonDocument.Parse(raw.GetRawText()));
-        m.SaveCleanedEvent(source, eventId, priceLevels, listings);
-    }
-    catch (Exception e)
-    {
-        Console.Error.WriteLine($"  !! failed to mirror event {eventId} to MongoDB: {e.Message}");
-    }
+    var s = GetStore()
+        ?? throw new InvalidOperationException("MongoDB is unreachable - listing data cannot be persisted");
+    var docs = StubHubInventoryMapper.Build(eventId, priceLevels, listings);
+    s.SaveEventInventory(eventId, docs);
 }
 
 // POST /api/eventinventory { eventId, url, proxy?, useGridPost?, concurrency?, batchDelay? }
 //   -> { eventId, raw, price_levels[], listings[] }
-// url = a .../event/<id>/ page. Fetches every section, normalizes, and mirrors
-// raw + cleaned to MongoDB (source = "stubhub.com"). Same response contract as
-// BroadwayDirect.Api + python/stubhub/api.py.
+// url = a .../event/<id>/ page. Fetches every section, normalizes, and writes one
+// document per listing into StubHub_Inventories_NEW_{eventId} (dropped + rewritten
+// each crawl, same as ETECH.Application.MarkAutomation's StubHubCrawler). A
+// persistence failure returns 5xx - it is NOT swallowed.
 //
 // useGridPost/concurrency/batchDelay are the sweep-path tuning knobs (defaults
 // mirror StubHubFetchOptions); omit them for today's behaviour, set
@@ -132,7 +121,17 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req) =>
     var priceLevels = StubHubAdapter.ParsePriceLevels(raw);
     var listings = StubHubAdapter.NormalizeListings(raw);
     var ev = StubHubAdapter.BuildEvent(raw);
-    MirrorToMongo(SourceOf(parsedUrl), ev.Id.ToString(), raw, priceLevels, listings);
+
+    try
+    {
+        PersistInventory(ev.Id.ToString(), priceLevels, listings);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            detail: $"fetch succeeded but persistence failed: {ex.Message}",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 
     return Results.Json(new
     {
@@ -147,10 +146,12 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req) =>
             display_price = pl.DisplayPrice,
             price_class = pl.PriceClass,
         }),
-        // first 7 keys == BroadwayDirect's listing shape exactly; raw_price /
-        // currency are the StubHub-only superset (cleaned_events stores only the 7).
+        // the fetch/adapter shape; listing_id / raw_price / currency are the
+        // StubHub-only superset. The persisted document shape is different -
+        // see StubHubInventoryTicket (one doc per listing, PascalCase fields).
         listings = listings.Select(l => new
         {
+            listing_id = l.ListingId,
             section_label = l.SectionLabel,
             row = l.Row,
             price_level_id = l.PriceLevelId,
@@ -204,7 +205,7 @@ app.Lifetime.ApplicationStopping.Register(() =>
 {
     foreach (var c in clients.Values)
         c.DisposeAsync().AsTask().GetAwaiter().GetResult();
-    mongo?.Close();
+    store?.Close();
 });
 
 app.Run();

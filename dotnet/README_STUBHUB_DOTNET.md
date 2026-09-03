@@ -3,7 +3,8 @@
 .NET 8 port of [`../python/stubhub/`](../python/stubhub/README.md). Mirrors the
 way `dotnet/` (README_DOTNET.md) ports `python/broadwaydirect/`: same project
 split, added to the same `BroadwayDirect.sln`, reusing `BroadwayDirect.Core` for
-the shared `Event` / `PriceLevel` / `MongoStore`.
+the shared `Event` / `PriceLevel`. Persistence, however, is **not** shared -
+StubHub has its own `StubHubInventoryStore` (see "Mongo persistence" below).
 
 **IMPORTANT - `StubHub.Fetch` (WebView2) was written on macOS and has NOT been
 run on real Windows.** It only build-checks off-Windows
@@ -15,8 +16,12 @@ report back - same open risk as `BroadwayDirect.Fetch` (see "Step 1" below).
 ```
 StubHub.Core/     - JsonTokenExtractor (embedded-JSON bracket parser),
                     StubHubAdapter (raw -> price_levels + listings + Event),
-                    Models/StubHubListing. Pure; builds + tests on any OS.
-                    Ports python/stubhub/extract.py + adapter.py + models.py.
+                    Models/StubHubListing, plus the persistence layer:
+                    StubHubInventoryMapper (listings -> per-listing docs) +
+                    Storage/StubHubInventoryStore (drop + rewrite one collection
+                    per event) + Models/StubHubInventoryTicket. Pure/build-safe
+                    except the store needs a live Mongo. Ports
+                    python/stubhub/extract.py + adapter.py + models.py.
 StubHub.Fetch/    - StubHubClient (grid-POST primary + section-sweep fallback +
                     retry passes + discover), DataDomeBrowser (one real WebView2
                     window per proxy, fresh cookies per event, in-page evaluate
@@ -26,19 +31,17 @@ StubHub.Fetch/    - StubHubClient (grid-POST primary + section-sweep fallback +
 StubHub.Api/      - ASP.NET Core Minimal API: POST /api/eventinventory +
                     POST /api/discover. Same response contract as
                     python/stubhub/api.py and BroadwayDirect.Api.
-StubHub.Tests/    - xUnit, 1:1 port of test_extract.py + test_adapter.py
-                    (same fixtures). 11/11 green on macOS.
+StubHub.Tests/    - xUnit: port of test_extract.py + test_adapter.py (same
+                    fixtures) + StubHubInventoryMapperTests. 21/21 green on macOS.
 ```
 
-### Shared-model change in `BroadwayDirect.Core`
+### Shared-model note in `BroadwayDirect.Core`
 
-`MongoStore.SaveCleanedEvent` now takes `IEnumerable<ICleanedListing>` instead of
-`IEnumerable<Listing>`. `Listing` implements the new interface (all 7 members
-already existed), so BroadwayDirect callers are unaffected (`IEnumerable<T>` is
-covariant); `StubHub.Core`'s `StubHubListing` implements it too, so both sources
-write byte-identical `cleaned_events` documents. This is the typed stand-in for
-the Python side's duck-typing (`save_cleaned_event` just reads `.quantity` /
-`.seat_range_label` off whatever Listing it's handed).
+`MongoStore.SaveCleanedEvent` takes `IEnumerable<ICleanedListing>`; `Listing`
+implements it (all 7 members already existed) so BroadwayDirect callers are
+unaffected. `StubHubListing` still implements it too, but that path is now
+**vestigial** - the StubHub API writes through `StubHubInventoryStore`, not
+`MongoStore`, so it no longer produces `cleaned_events` documents.
 
 ## Step 1 (REQUIRED first): confirm WebView2 gets past DataDome
 
@@ -92,17 +95,34 @@ Body: `{ url, scope?, maxPages?, proxy? }` - `url` = a `/category/` , `/grouping
 collected, events[] }` (event list only; loop each `eventId` back into
 `/api/eventinventory`).
 
-### Mongo mirroring (env vars, all optional)
+### Mongo persistence (env vars, all optional)
 
 ```
 MONGO_URI   default "mongodb://localhost:27017"
 MONGO_DB    default "broadwaydirect"
 ```
 
-Best-effort: if MongoDB is unreachable a warning is logged and the HTTP response
-still succeeds. `raw_events` / `cleaned_events`, unique key `(source, event_id)`,
-`source = "stubhub.com"` - shared with BroadwayDirect. Fetch tuning defaults live
-in `StubHub.Api/appsettings.json` under `"Fetch"`.
+**Not a mirror - the only place StubHub listing data lands.** Matches
+`ETECH.Application.MarkAutomation`'s `StubHubCrawler`:
+
+- one collection per event, `StubHub_Inventories_NEW_{eventId}`, **dropped and
+  rewritten** on every crawl;
+- one document per listing (`StubHubInventoryTicket` - the
+  `IntegrationTemplateSourceTicket` shape, PascalCase fields), `_id` = the native
+  StubHub listing id, or a deterministic hash of `Section_Row_LowSeat_HighSeat`
+  when absent (`StubHubInventoryMapper`);
+- price-level fields (`DisplayName` / `Zone` / `DisplayPrice` / `PriceClass`) are
+  denormalised onto each document; `Price` = per-listing `RawPrice`, else the
+  price level's min.
+
+There is **no** `raw_events` / `cleaned_events` for this path any more. If Mongo
+is unreachable or the write fails the request returns **500** (the fetch
+succeeded but the data is not persisted) - it is not swallowed. Fetch tuning
+defaults live in `StubHub.Api/appsettings.json` under `"Fetch"`.
+
+`BroadwayDirect` is unchanged and still uses the shared `MongoStore` /
+`raw_events` / `cleaned_events`. The Python `stubhub/api.py` also still uses
+`MongoStore` - parity there is intentionally deferred.
 
 ## Notable differences from the Python version
 

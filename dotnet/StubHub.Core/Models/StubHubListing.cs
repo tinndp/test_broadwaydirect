@@ -14,14 +14,18 @@ namespace StubHub.Core.Models;
 /// empty, while <see cref="SeatRange"/> comes straight from StubHub's
 /// <c>seatFrom</c>/<c>seatTo</c>.
 ///
-/// It implements <see cref="ICleanedListing"/> so
-/// <see cref="BroadwayDirect.Core.Storage.MongoStore.SaveCleanedEvent"/> writes
-/// the same 7 listing keys as BroadwayDirect. The per-listing price
-/// (<see cref="RawPrice"/> / <see cref="Currency"/>) is a StubHub-only superset -
-/// it rides the HTTP response and <c>raw_events</c>, never <c>cleaned_events</c>.
+/// It still implements <see cref="ICleanedListing"/> (kept for compatibility),
+/// but the StubHub path no longer persists through
+/// <see cref="BroadwayDirect.Core.Storage.MongoStore"/> - <see cref="StubHubInventoryMapper"/>
+/// turns each listing into a <see cref="StubHubInventoryTicket"/> and
+/// <see cref="StubHub.Core.Storage.StubHubInventoryStore"/> writes one document
+/// per listing into <c>StubHub_Inventories_NEW_{eventId}</c> (matches
+/// ETECH.Application.MarkAutomation's StubHubCrawler). <see cref="RawPrice"/> /
+/// <see cref="Currency"/> are the per-listing price StubHub carries natively.
 /// </summary>
 public sealed class StubHubListing : ICleanedListing
 {
+    public string ListingId { get; init; } = "";      // native grid.items[].id / listingId (StubHub returns one per listing)
     public string SectionLabel { get; init; } = "";   // StubHub sectionMapName (fallback: section)
     public string Row { get; init; } = "";            // StubHub row (fallback: rowContent minus "Row ")
     public long PriceLevelId { get; init; }           // StubHub ticketClass id -> joins to PriceLevel

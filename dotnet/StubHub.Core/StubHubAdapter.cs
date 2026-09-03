@@ -87,6 +87,7 @@ public static class StubHubAdapter
             var seatKeys = SeatKeys(it);
             outList.Add(new StubHubListing
             {
+                ListingId = FirstNonEmpty(StringOrEmpty(it, "id"), StringOrEmpty(it, "listingId")),
                 SectionLabel = FirstNonEmpty(StringOrEmpty(it, "sectionMapName"), StringOrEmpty(it, "section")),
                 Row = Row(it),
                 PriceLevelId = LongOrNull(it, "ticketClass") ?? 0,
