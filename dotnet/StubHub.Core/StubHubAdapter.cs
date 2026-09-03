@@ -90,7 +90,7 @@ public static class StubHubAdapter
                 SectionLabel = FirstNonEmpty(StringOrEmpty(it, "sectionMapName"), StringOrEmpty(it, "section")),
                 Row = Row(it),
                 PriceLevelId = LongOrNull(it, "ticketClass") ?? 0,
-                Quantity = (int)(LongOrNull(it, "availableTickets") is { } q && q != 0 ? q : seatKeys.Count),
+                Quantity = (int)(LongOrNull(it, "availableTickets") is { } q && q != 0 ? q : Math.Max(seatKeys.Count, 1)),
                 SeatRange = SeatRange(it),
                 SeatKeys = seatKeys,
                 SeatingType = BoolOrFalse(it, "isSeatedTogether") ? "Consecutive" : "Piggyback",
@@ -121,8 +121,9 @@ public static class StubHubAdapter
     }
 
     /// <summary>Per-seat keys "SECTION-ROW-N" when StubHub exposes a seat range that
-    /// lines up with the ticket count; otherwise a single opaque key = the listing
-    /// id (quantity still carries the real count).</summary>
+    /// lines up with the ticket count; otherwise an empty list - when
+    /// <c>hasSeatDetails=false</c> StubHub sends no seat numbers at all, so there is
+    /// nothing to key on (quantity still carries the real count).</summary>
     private static List<string> SeatKeys(JsonElement it)
     {
         if (BoolOrFalse(it, "hasSeatDetails"))
@@ -140,7 +141,7 @@ public static class StubHubAdapter
                     return Enumerable.Range(lo, count).Select(n => $"{sec}-{row}-{n}").ToList();
             }
         }
-        return new List<string> { StringOrEmpty(it, "id") is { Length: > 0 } s ? s : LongOrNull(it, "id")?.ToString(CultureInfo.InvariantCulture) ?? "" };
+        return new List<string>();
     }
 
     // ---------------------------------------------------------------------

@@ -52,9 +52,9 @@ def test_listings_count_and_shared_keys():
 
 def test_listing_quantity_is_availabletickets_not_seatkey_count():
     ls = {l.section_label: l for l in normalize_listings(load())}
-    # no seat detail -> one opaque key, but quantity still reflects the bundle
+    # no seat detail -> no seat keys, but quantity still reflects the bundle
     fd = ls["34FD"]
-    assert fd.seat_keys == ["12733224978"]
+    assert fd.seat_keys == []
     assert fd.quantity == 4
     assert fd.seat_range == ""
     assert fd.seating_type == "Consecutive"   # isSeatedTogether

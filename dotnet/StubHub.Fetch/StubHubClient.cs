@@ -17,6 +17,9 @@ namespace StubHub.Fetch;
 ///      DataDome's rate limit;
 ///   2. FALLBACK / gap-fill: sweep one SSR request per stadium section, batched
 ///      with adaptive backoff + fresh-context retry passes for 429'd sections.
+///      Sections whose <c>sectionPopupData</c> prefix is a ticketClassId (premium
+///      zones) are swept with <c>&amp;ticketClasses=&lt;id&gt;</c> as well - a bare
+///      <c>&amp;sections=</c> returns empty for those (extraction-report Step 6).
 ///
 /// One <see cref="WebView2Host"/> (STA pump) + one <see cref="DataDomeBrowser"/>
 /// per client; StubHub.Api pools one client per proxy, exactly like
@@ -77,10 +80,10 @@ public sealed class StubHubClient : IAsyncDisposable
             throw new InvalidOperationException($"stubhub: no sections found for {eventUrl}");
 
         var totalCount = IntOrNull(boot, "totalCount");
-        var sectionIds = UniqueSectionIds(popupKeys);
+        var sectionSpecs = SectionSpecs(popupKeys, TicketClassIds(boot));
         var itemsById = new Dictionary<string, JsonElement>();
         string? method = null;
-        var failed = new List<string>();
+        var failed = new List<SectionSpec>();
 
         // --- primary: one (or few) POST(s) to the grid endpoint -------------
         var sessionId = Str(boot, "filterSortSessionId");
@@ -111,7 +114,7 @@ public sealed class StubHubClient : IAsyncDisposable
                     " - filling the gap with a section sweep");
 
             failed = await SweepSectionsAsync(
-                basePath, sectionIds, itemsById, opt.Concurrency, opt.BatchDelaySeconds, ct);
+                basePath, sectionSpecs, itemsById, opt.Concurrency, opt.BatchDelaySeconds, ct);
 
             // Retry passes for 429'd sections. Each reopens fresh (new datadome
             // cookie, and - if the proxy rotates - a new exit IP, which is what
@@ -144,7 +147,7 @@ public sealed class StubHubClient : IAsyncDisposable
             $"  [stubhub] done via {method}: {items.Count} listings / totalCount {totalCount} " +
             $"({covPct}%), {failed.Count} section(s) unrecovered");
 
-        return AssembleRaw(boot, eventUrl, totalCount, items, method!, sectionIds.Count, failed.Count, covPct);
+        return AssembleRaw(boot, eventUrl, totalCount, items, method!, sectionSpecs.Count, failed.Count, covPct);
     }
 
     private async Task<List<JsonElement>?> FetchViaGridPostAsync(
@@ -217,22 +220,22 @@ public sealed class StubHubClient : IAsyncDisposable
         return collected.Values.ToList();
     }
 
-    private async Task<List<string>> SweepSectionsAsync(
-        string basePath, List<string> sectionIds, Dictionary<string, JsonElement> itemsById,
+    private async Task<List<SectionSpec>> SweepSectionsAsync(
+        string basePath, List<SectionSpec> specs, Dictionary<string, JsonElement> itemsById,
         int concurrency, double delay, CancellationToken ct)
     {
-        var failedAll = new List<string>();
-        var n = sectionIds.Count;
+        var failedAll = new List<SectionSpec>();
+        var n = specs.Count;
         var curDelay = delay;
 
         for (var start = 0; start < n; start += concurrency)
         {
-            var batch = sectionIds.Skip(start).Take(concurrency).ToList();
+            var batch = specs.Skip(start).Take(concurrency).ToList();
             JsonElement res;
             try
             {
                 res = await _browser.EvaluateJsonAsync(
-                    StubHubScripts.SectionBatch, new { ids = batch, basePath });
+                    StubHubScripts.SectionBatch, new { specs = batch, basePath });
             }
             catch (Exception e)
             {
@@ -250,7 +253,7 @@ public sealed class StubHubClient : IAsyncDisposable
                 if (k != null) itemsById[k] = it;
             }
 
-            var batchFailed = StrArray(res, "failed");
+            var batchFailed = SpecArray(res, "failed");
             failedAll.AddRange(batchFailed);
 
             // adaptive backoff: 429s in a batch -> slow the rest of the sweep
@@ -381,15 +384,63 @@ public sealed class StubHubClient : IAsyncDisposable
         return o;
     }
 
-    private static List<string> UniqueSectionIds(IEnumerable<string> popupKeys)
+    /// <summary>A section-sweep work unit: a stadium section id plus, when the
+    /// <c>sectionPopupData</c> prefix was a ticketClassId, that id (bare
+    /// <c>&amp;sections=</c> returns empty for those - extraction-report Step 6).</summary>
+    private sealed record SectionSpec(string sec, string tc);
+
+    /// <summary>ticketClassId values for this event (as strings). Used only as a
+    /// guard: a <c>sectionPopupData</c> prefix counts as a ticket-class prefix
+    /// when it is both NOT the venue's dominant prefix AND a known ticketClassId
+    /// (or when the set is empty and only the dominant-prefix test can be used).</summary>
+    private static HashSet<string> TicketClassIds(JsonElement boot)
     {
-        var seen = new HashSet<string>();
-        var outl = new List<string>();
+        var ids = new HashSet<string>();
+        foreach (var c in ArrayItems(boot, "ticketClasses"))
+            if (c.ValueKind == JsonValueKind.Object && c.TryGetProperty("ticketClassId", out var v) &&
+                v.ValueKind != JsonValueKind.Null)
+                ids.Add(v.ToString());
+        if (boot.ValueKind == JsonValueKind.Object &&
+            boot.TryGetProperty("ticketClassPopupData", out var popup) &&
+            popup.ValueKind == JsonValueKind.Object)
+            foreach (var p in popup.EnumerateObject())
+                ids.Add(p.Name);
+        return ids;
+    }
+
+    /// <summary><c>sectionPopupData</c> keys are "&lt;prefix&gt;_&lt;sectionId&gt;".
+    /// Most sections share one prefix (the venue-config id); premium ticket classes
+    /// use their <c>ticketClassId</c> as the prefix instead and a bare
+    /// <c>&amp;sections=</c> returns empty for those (extraction-report Step 6).
+    /// Return an ordered, de-duplicated list of specs: <c>tc</c> is set when the
+    /// prefix is NOT the dominant one - confirmed against <paramref name="ticketClassIds"/>
+    /// when that set is non-empty. A section under both the venue prefix and a
+    /// class prefix yields both specs (listings are de-duped by id downstream).</summary>
+    private static List<SectionSpec> SectionSpecs(IEnumerable<string> popupKeys, HashSet<string> ticketClassIds)
+    {
+        var parsed = new List<(string prefix, string sid)>();
+        var counts = new Dictionary<string, int>();
         foreach (var k in popupKeys)
         {
-            var parts = k.Split('_');
-            var sid = parts[^1];
-            if (sid.Length > 0 && seen.Add(sid)) outl.Add(sid);
+            var cut = k.LastIndexOf('_');
+            var prefix = cut >= 0 ? k[..cut] : "";
+            var sid = cut >= 0 ? k[(cut + 1)..] : k;
+            if (sid.Length == 0) continue;
+            parsed.Add((prefix, sid));
+            counts[prefix] = counts.GetValueOrDefault(prefix) + 1;
+        }
+        var dominant = counts.Count > 0
+            ? counts.Aggregate((a, b) => b.Value > a.Value ? b : a).Key
+            : "";
+
+        var seen = new HashSet<(string, string)>();
+        var outl = new List<SectionSpec>();
+        foreach (var (prefix, sid) in parsed)
+        {
+            var isClass = prefix != dominant &&
+                          (ticketClassIds.Count == 0 || ticketClassIds.Contains(prefix));
+            var tc = isClass ? prefix : "";
+            if (seen.Add((tc, sid))) outl.Add(new SectionSpec(sid, tc));
         }
         return outl;
     }
@@ -471,6 +522,22 @@ public sealed class StubHubClient : IAsyncDisposable
             .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : e.ToString())
             .Where(s => s.Length > 0)
             .ToList();
+    }
+
+    private static List<SectionSpec> SpecArray(JsonElement el, string prop)
+    {
+        var outl = new List<SectionSpec>();
+        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(prop, out var v) ||
+            v.ValueKind != JsonValueKind.Array)
+            return outl;
+        foreach (var e in v.EnumerateArray())
+        {
+            if (e.ValueKind != JsonValueKind.Object) continue;
+            var sec = e.TryGetProperty("sec", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() ?? "" : "";
+            var tc = e.TryGetProperty("tc", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() ?? "" : "";
+            if (sec.Length > 0) outl.Add(new SectionSpec(sec, tc));
+        }
+        return outl;
     }
 
     public async ValueTask DisposeAsync()

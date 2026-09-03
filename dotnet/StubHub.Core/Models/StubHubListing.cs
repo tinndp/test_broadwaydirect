@@ -9,9 +9,9 @@ namespace StubHub.Core.Models;
 /// It can't reuse <see cref="BroadwayDirect.Core.Models.Listing"/> because that
 /// one derives <c>Quantity</c> from <c>SeatKeys.Count</c> and <c>SeatRangeLabel</c>
 /// from <c>SeatNums</c> - StubHub usually gives no per-seat detail
-/// (<c>hasSeatDetails=false</c>), so <see cref="Quantity"/> is an explicit field
-/// and <see cref="SeatKeys"/> falls back to a single opaque <c>[listingId]</c>,
-/// while <see cref="SeatRange"/> comes straight from StubHub's
+/// (<c>hasSeatDetails=false</c>) and sends no seat numbers at all, so
+/// <see cref="Quantity"/> is an explicit field and <see cref="SeatKeys"/> is
+/// empty, while <see cref="SeatRange"/> comes straight from StubHub's
 /// <c>seatFrom</c>/<c>seatTo</c>.
 ///
 /// It implements <see cref="ICleanedListing"/> so
@@ -27,7 +27,7 @@ public sealed class StubHubListing : ICleanedListing
     public long PriceLevelId { get; init; }           // StubHub ticketClass id -> joins to PriceLevel
     public int Quantity { get; init; }                // StubHub availableTickets (NOT SeatKeys.Count)
     public string SeatRange { get; init; } = "";      // "9001-9007", or "" when no seat detail
-    public List<string> SeatKeys { get; init; } = new();  // per-seat keys, or [listingId]
+    public List<string> SeatKeys { get; init; } = new();  // per-seat keys, or [] when no seat detail
     public string SeatingType { get; init; } = "Consecutive"; // "Consecutive" (isSeatedTogether) | "Piggyback"
     public double RawPrice { get; init; }             // per-listing price in listing currency (raw/HTTP only)
     public string Currency { get; init; } = "USD";    // StubHub listingCurrencyCode

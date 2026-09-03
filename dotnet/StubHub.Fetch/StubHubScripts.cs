@@ -117,19 +117,23 @@ internal static class StubHubScripts
     }
     """";
 
-    /// <summary>Fallback / gap-fill: fetch a batch of section ids in parallel;
-    /// every section holds &lt;=10 listings so no pagination.</summary>
+    /// <summary>Fallback / gap-fill: fetch a batch of section specs (<c>{sec, tc}</c>)
+    /// in parallel; every section holds &lt;=10 listings so no pagination. A spec with
+    /// a non-empty <c>tc</c> is a premium ticket class whose section returns empty
+    /// under a bare <c>&amp;sections=</c> - it needs <c>&amp;ticketClasses=&lt;tc&gt;</c>
+    /// too (extraction-report Step 6).</summary>
     public static readonly string SectionBatch = "async (arg) => {" + Helpers + """"
-      const ids = arg.ids, basePath = arg.basePath;
+      const specs = arg.specs, basePath = arg.basePath;
       const failed = [];
-      const results = await Promise.all(ids.map(id =>
-        fetch(basePath + '?estimatedFees=false&quantity=0&sortDirection=1&sortBy=PRICE' + '&sections=' + id, { credentials: 'include' })
+      const results = await Promise.all(specs.map(sp => {
+        const tcq = sp.tc ? ('&ticketClasses=' + sp.tc) : '';
+        return fetch(basePath + '?estimatedFees=false&quantity=0&sortDirection=1&sortBy=PRICE' + tcq + '&sections=' + sp.sec, { credentials: 'include' })
           .then(async r => {
-            if(r.status !== 200){ failed.push(id); return []; }
+            if(r.status !== 200){ failed.push(sp); return []; }
             return __gridItems(await r.text());
           })
-          .catch(() => { failed.push(id); return []; })
-      ));
+          .catch(() => { failed.push(sp); return []; });
+      }));
       return { items: results.flat(), failed };
     }
     """";

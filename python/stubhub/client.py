@@ -25,6 +25,11 @@ Strategy (from the extraction report, re-verified live 2026-09):
      one SSR request per section (`&sections=<id>&quantity=0`); every
      section holds <=10 listings so no pagination is needed. Batches with
      adaptive backoff + fresh-context retry passes for 429'd sections.
+     A `sectionPopupData` key is `"<prefix>_<sectionId>"`; for most sections
+     the prefix is the venue-config id, but premium ticket classes use the
+     `ticketClassId` as the prefix and a bare `&sections=<id>` then comes
+     back empty - those are swept with `&ticketClasses=<id>&sections=<id>`
+     (extraction-report Step 6).
   5. Dedupe listings by `id` (== `listingId`), assemble the raw dict that
      adapter.py consumes and mongo_storage stores in raw_events.
 
@@ -155,16 +160,17 @@ _JS_GRID_POST = r"""async (arg) => {
 }"""
 
 _JS_SECTION_BATCH = ("async (arg) => {" + _JS_HELPERS + r"""
-  const ids = arg.ids, basePath = arg.basePath;
+  const specs = arg.specs, basePath = arg.basePath;
   const failed = [];
-  const results = await Promise.all(ids.map(id =>
-    fetch(basePath + %r + '&sections=' + id, { credentials: 'include' })
+  const results = await Promise.all(specs.map(sp => {
+    const tcq = sp.tc ? ('&ticketClasses=' + sp.tc) : '';
+    return fetch(basePath + %r + tcq + '&sections=' + sp.sec, { credentials: 'include' })
       .then(async r => {
-        if(r.status !== 200){ failed.push(id); return []; }
+        if(r.status !== 200){ failed.push(sp); return []; }
         return __gridItems(await r.text());
       })
-      .catch(() => { failed.push(id); return []; })
-  ));
+      .catch(() => { failed.push(sp); return []; });
+  }));
   return { items: results.flat(), failed };
 }""") % COMMON_QS
 
@@ -370,7 +376,8 @@ class StubHubClient:
                 raise RuntimeError(f"stubhub: no sections found for {event_url}")
 
             total_count = boot.get("totalCount")
-            section_ids = _unique_section_ids(boot.get("sectionPopupKeys") or [])
+            section_specs = _section_specs(
+                boot.get("sectionPopupKeys") or [], _ticket_class_ids(boot))
             items_by_id: dict = {}
             method = None
             failed: list = []
@@ -398,7 +405,7 @@ class StubHubClient:
                     print(f"  [stubhub] grid-post got {len(items_by_id)}/{total_count}"
                           f" - filling the gap with a section sweep", file=sys.stderr)
                 failed = await self._sweep_sections(
-                    page, base_path, section_ids, items_by_id,
+                    page, base_path, section_specs, items_by_id,
                     self.concurrency, self.batch_delay)
 
                 # Retry passes for 429'd sections. Each opens a FRESH context
@@ -425,7 +432,7 @@ class StubHubClient:
                 method = "section-sweep" if method is None else "grid-post+sweep"
 
             items = list(items_by_id.values())
-            n = len(section_ids)
+            n = len(section_specs)
             cov_pct = round(len(items) / total_count * 100, 1) if total_count else None
             print(f"  [stubhub] done via {method}: {len(items)} listings / "
                   f"totalCount {total_count} ({cov_pct}%), "
@@ -512,20 +519,20 @@ class StubHubClient:
             await asyncio.sleep(self.batch_delay)
         return list(collected.values())
 
-    async def _sweep_sections(self, page, base_path, section_ids, items_by_id,
+    async def _sweep_sections(self, page, base_path, specs, items_by_id,
                               concurrency, delay) -> list:
-        """Fetch each section id `concurrency` at a time with `delay`s
-        between batches, folding listings into `items_by_id` (deduped by
-        id). Returns the ids whose request came back non-200 (usually 429),
-        plus any whose in-page evaluate threw (page/context died)."""
+        """Fetch each section spec (`{sec, tc}`) `concurrency` at a time with
+        `delay`s between batches, folding listings into `items_by_id` (deduped
+        by id). Returns the specs whose request came back non-200 (usually
+        429), plus any whose in-page evaluate threw (page/context died)."""
         failed_all: list = []
-        n = len(section_ids)
+        n = len(specs)
         cur_delay = delay
         for start in range(0, n, concurrency):
-            batch = section_ids[start:start + concurrency]
+            batch = specs[start:start + concurrency]
             try:
                 res = await page.evaluate(_JS_SECTION_BATCH,
-                                          {"ids": batch, "basePath": base_path}) or {}
+                                          {"specs": batch, "basePath": base_path}) or {}
             except Exception as e:
                 # page/context died mid-sweep - record this batch and keep going
                 failed_all.extend(batch)
@@ -615,15 +622,52 @@ class StubHubClient:
                 await ctx.close()
 
 
-def _unique_section_ids(popup_keys) -> list:
-    """sectionPopupData keys are "<ticketClassId>_<sectionId>" - return the
-    distinct sectionId values, order preserved."""
-    seen, out = set(), []
+def _ticket_class_ids(boot: dict) -> set:
+    """ticketClassId values for this event, as strings. Used only as a guard:
+    a `sectionPopupData` prefix is treated as a ticket-class prefix when it is
+    both NOT the venue's dominant prefix AND a known ticketClassId (or when the
+    set is empty and we have to trust the dominant-prefix test alone)."""
+    ids = set()
+    for c in boot.get("ticketClasses") or []:
+        cid = c.get("ticketClassId")
+        if cid is not None:
+            ids.add(str(cid))
+    ids.update(str(k) for k in (boot.get("ticketClassPopupData") or {}))
+    return ids
+
+
+def _section_specs(popup_keys, ticket_class_ids=None) -> list:
+    """`sectionPopupData` keys are "<prefix>_<sectionId>". Most sections share
+    one prefix (the venue-config id); premium ticket classes use their
+    `ticketClassId` as the prefix instead, and a bare `&sections=<id>` returns
+    empty for those - they must be fetched with `&ticketClasses=<id>` too
+    (extraction-report Step 6).
+
+    Return an ordered, de-duplicated list of
+    `{"sec": <sectionId>, "tc": <ticketClassId or "">}`. `tc` is set when the
+    prefix is NOT the dominant (venue) prefix - confirmed against
+    `ticket_class_ids` when that set is available. A section under both the
+    venue prefix and a class prefix yields both specs (listings are de-duped
+    by id downstream)."""
+    tcids = ticket_class_ids or set()
+    parsed = []
+    counts: dict = {}
     for k in popup_keys:
-        sid = k.split("_")[-1]
-        if sid and sid not in seen:
-            seen.add(sid)
-            out.append(sid)
+        prefix, _, sid = str(k).rpartition("_")
+        if not sid:
+            continue
+        parsed.append((prefix, sid))
+        counts[prefix] = counts.get(prefix, 0) + 1
+    dominant = max(counts, key=counts.get) if counts else ""
+
+    seen, out = set(), []
+    for prefix, sid in parsed:
+        is_class = prefix != dominant and (not tcids or prefix in tcids)
+        tc = prefix if is_class else ""
+        dedupe_key = (tc, sid)
+        if dedupe_key not in seen:
+            seen.add(dedupe_key)
+            out.append({"sec": sid, "tc": tc})
     return out
 
 

@@ -44,7 +44,7 @@ public class StubHubAdapterTests
         Assert.Equal("Consecutive", first.SeatingType);   // isSeatedTogether = true
         Assert.Equal(4, first.Quantity);                  // availableTickets, not SeatKeys.Count
         Assert.Equal("", first.SeatRange);                // hasSeatDetails = false
-        Assert.Equal(new[] { "12733224978" }, first.SeatKeys);  // opaque key = listing id
+        Assert.Empty(first.SeatKeys);                     // no seat detail -> no seat keys
         // raw_price / currency are the documented StubHub-only superset
         Assert.Equal(49.97, first.RawPrice);
         Assert.Equal("USD", first.Currency);

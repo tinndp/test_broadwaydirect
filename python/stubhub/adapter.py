@@ -78,8 +78,9 @@ def _seat_range(it: dict) -> str:
 
 def _seat_keys(it: dict) -> list:
     """Per-seat keys "SECTION-ROW-N" when StubHub exposes a seat range that
-    lines up with the ticket count; otherwise a single opaque key = the
-    listing id (quantity still carries the real count)."""
+    lines up with the ticket count; otherwise an empty list - when
+    `hasSeatDetails=false` StubHub does not send seat numbers at all, so
+    there is nothing to key on (quantity still carries the real count)."""
     if it.get("hasSeatDetails"):
         sec = (it.get("sectionMapName") or it.get("section") or "").strip()
         row = _row(it)
@@ -92,19 +93,20 @@ def _seat_keys(it: dict) -> list:
             qty = it.get("availableTickets") or 0
             if 0 < len(nums) <= max(qty, 1) + 4:
                 return [f"{sec}-{row}-{n}" for n in nums]
-    return [str(it.get("id"))]
+    return []
 
 
 def normalize_listings(raw: dict) -> list:
     out = []
     for it in raw.get("items") or []:
+        keys = _seat_keys(it)
         out.append(Listing(
             section_label=(it.get("sectionMapName") or it.get("section") or "").strip(),
             row=_row(it),
             price_level_id=it.get("ticketClass"),
-            quantity=int(it.get("availableTickets") or len(_seat_keys(it))),
+            quantity=int(it.get("availableTickets") or len(keys) or 1),
             seat_range=_seat_range(it),
-            seat_keys=_seat_keys(it),
+            seat_keys=keys,
             seating_type="Consecutive" if it.get("isSeatedTogether") else "Piggyback",
             raw_price=float(it.get("rawPrice") or 0.0),
             currency=it.get("listingCurrencyCode") or "USD",
