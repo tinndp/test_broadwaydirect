@@ -94,6 +94,7 @@ public static class StubHubAdapter
                 Quantity = (int)(LongOrNull(it, "availableTickets") is { } q && q != 0 ? q : Math.Max(seatKeys.Count, 1)),
                 SeatRange = SeatRange(it),
                 SeatKeys = seatKeys,
+                SeatDetailLevel = SeatDetailLevel(it),
                 SeatingType = BoolOrFalse(it, "isSeatedTogether") ? "Consecutive" : "Piggyback",
                 RawPrice = DoubleOrNull(it, "rawPrice") ?? 0.0,
                 Currency = FirstNonEmpty(StringOrEmpty(it, "listingCurrencyCode"), "USD"),
@@ -112,38 +113,50 @@ public static class StubHubAdapter
             : rc;
     }
 
-    private static string SeatRange(JsonElement it)
+    /// <summary><c>(lo, hi)</c> when <c>seatFrom</c>/<c>seatTo</c> describe one
+    /// contiguous block that matches <c>availableTickets</c>; else null. Independent
+    /// of <c>hasSeatDetails</c> (StubHub sends a consistent range on plenty of
+    /// <c>hasSeatDetails=false</c> listings too). The width==quantity check is what
+    /// separates a real reserved-seat block from a zone ticket / seller typo /
+    /// placeholder range.</summary>
+    private static (int lo, int hi)? SeatSpan(JsonElement it)
     {
-        if (!BoolOrFalse(it, "hasSeatDetails")) return "";
-        var a = StringOrEmpty(it, "seatFrom");
-        var b = StringOrEmpty(it, "seatTo");
-        if (a.Length == 0 || b.Length == 0) return "";
-        return a == b ? a : $"{a}-{b}";
+        if (BoolOrFalse(it, "isZoneTicketClass") || BoolOrFalse(it, "hideSeatAndRowInfo"))
+            return null;
+        if (!int.TryParse(StringOrEmpty(it, "seatFrom"), out var a) ||
+            !int.TryParse(StringOrEmpty(it, "seatTo"), out var b))
+            return null;
+        var lo = Math.Min(a, b);
+        var hi = Math.Max(a, b);
+        var qty = (int)(LongOrNull(it, "availableTickets") ?? 0);
+        if (lo < 1 || hi - lo + 1 != qty) return null;
+        return (lo, hi);
     }
 
-    /// <summary>Per-seat keys "SECTION-ROW-N" when StubHub exposes a seat range that
-    /// lines up with the ticket count; otherwise an empty list - when
-    /// <c>hasSeatDetails=false</c> StubHub sends no seat numbers at all, so there is
-    /// nothing to key on (quantity still carries the real count).</summary>
+    private static string SeatRange(JsonElement it)
+    {
+        if (SeatSpan(it) is not { } s) return "";
+        return s.lo == s.hi ? s.lo.ToString(CultureInfo.InvariantCulture) : $"{s.lo}-{s.hi}";
+    }
+
+    /// <summary>Per-seat keys "SECTION-ROW-N" ONLY when StubHub confirms the exact
+    /// seats (<c>hasSeatDetails=true</c>). For a seller-declared range the numbers
+    /// are not guaranteed, so keying on them would assert false per-seat identity -
+    /// return [] and let identity fall to the listing id.</summary>
     private static List<string> SeatKeys(JsonElement it)
     {
-        if (BoolOrFalse(it, "hasSeatDetails"))
-        {
-            var sec = FirstNonEmpty(StringOrEmpty(it, "sectionMapName"), StringOrEmpty(it, "section"));
-            var row = Row(it);
-            if (int.TryParse(StringOrEmpty(it, "seatFrom"), out var aI) &&
-                int.TryParse(StringOrEmpty(it, "seatTo"), out var bI))
-            {
-                var lo = Math.Min(aI, bI);
-                var hi = Math.Max(aI, bI);
-                var count = hi - lo + 1;
-                var qty = (int)(LongOrNull(it, "availableTickets") ?? 0);
-                if (count > 0 && count <= Math.Max(qty, 1) + 4)
-                    return Enumerable.Range(lo, count).Select(n => $"{sec}-{row}-{n}").ToList();
-            }
-        }
-        return new List<string>();
+        if (!BoolOrFalse(it, "hasSeatDetails") || SeatSpan(it) is not { } s)
+            return new List<string>();
+        var row = Row(it);
+        if (row.Length == 0) return new List<string>();
+        var sec = FirstNonEmpty(StringOrEmpty(it, "sectionMapName"), StringOrEmpty(it, "section"));
+        return Enumerable.Range(s.lo, s.hi - s.lo + 1).Select(n => $"{sec}-{row}-{n}").ToList();
     }
+
+    /// <summary>"exact" (hasSeatDetails + consistent range - SeatKeys populated),
+    /// "declared" (consistent range but seller-supplied, not confirmed), or "none".</summary>
+    private static string SeatDetailLevel(JsonElement it) =>
+        SeatSpan(it) is null ? "none" : (BoolOrFalse(it, "hasSeatDetails") ? "exact" : "declared");
 
     // ---------------------------------------------------------------------
     // event metadata for cleaned_events (name / local_date)

@@ -159,6 +159,7 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req) =>
             quantity = l.Quantity,
             seat_range = l.SeatRange,
             seat_keys = l.SeatKeys,
+            seat_detail_level = l.SeatDetailLevel,
             raw_price = l.RawPrice,
             currency = l.Currency,
         }),

@@ -97,9 +97,8 @@ def _price_level_dict(pl) -> dict:
 
 
 def _listing_dict(l) -> dict:
-    # first 7 keys == broadwaydirect's _listing_dict exactly; raw_price /
-    # currency are a StubHub-only superset (per-listing price - broadwaydirect
-    # listings inherit price from their price_level). cleaned_events still
+    # first 7 keys == broadwaydirect's _listing_dict exactly; seat_detail_level
+    # / raw_price / currency are a StubHub-only superset. cleaned_events still
     # stores only the 7 shared keys (MongoStore ignores the extras).
     return {
         "section_label": l.section_label,
@@ -109,6 +108,7 @@ def _listing_dict(l) -> dict:
         "quantity": l.quantity,
         "seat_range": l.seat_range_label,
         "seat_keys": l.seat_keys,
+        "seat_detail_level": l.seat_detail_level,
         "raw_price": l.raw_price,
         "currency": l.currency,
     }

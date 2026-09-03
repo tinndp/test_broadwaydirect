@@ -84,8 +84,10 @@ Body: `{ eventId, url, proxy?, useGridPost?, concurrency?, batchDelay? }`
 Response: `{ eventId, raw, price_levels[], listings[] }` - `raw` is the assembled
 inventory dict (with a nested `coverage` block: `collected` / `totalCount` /
 `coverage_pct` / `method` / `sections` / `sections_failed` / `note`). `listings[]`
-carries the 7 shared keys plus StubHub's `raw_price` / `currency`. Same contract
-as `python/stubhub/api.py`.
+carries the 7 shared keys plus StubHub's `seat_detail_level` (`exact` /
+`declared` / `none` - how far to trust `seat_range`; `seat_keys` is populated
+only for `exact`), `raw_price` and `currency`. Same contract as
+`python/stubhub/api.py`.
 
 ### Mongo persistence (env vars, all optional)
 
@@ -105,7 +107,9 @@ MONGO_DB    default "broadwaydirect"
   when absent (`StubHubInventoryMapper`);
 - price-level fields (`DisplayName` / `Zone` / `DisplayPrice` / `PriceClass`) are
   denormalised onto each document; `Price` = per-listing `RawPrice`, else the
-  price level's min.
+  price level's min;
+- `SeatDetailLevel` (`exact` / `declared` / `none`) records whether
+  `LowSeat`/`HighSeat`/`SeatKeys` are StubHub-confirmed or seller-declared.
 
 There is **no** `raw_events` / `cleaned_events` for this path any more. If Mongo
 is unreachable or the write fails the request returns **500** (the fetch

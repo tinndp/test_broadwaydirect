@@ -6,11 +6,13 @@ price_levels documents are byte-for-byte the same shape across sources.
 `Listing` needs its own class (it can't reuse broadwaydirect.models.Listing)
 for two reasons:
   - broadwaydirect's Listing derives `quantity` from `len(seat_keys)`, which
-    only works when you have one key per seat. StubHub usually gives no
-    per-seat detail (`hasSeatDetails=false`) - it sends no seat numbers at
-    all - so quantity is an explicit field here and seat_keys is `[]`.
+    only works with one key per seat. StubHub only exposes per-seat keys when
+    `hasSeatDetails=true`, so quantity is an explicit field here (from
+    `availableTickets`) and seat_keys is `[]` otherwise.
   - broadwaydirect's Listing derives `seat_range` from `seat_nums`; StubHub
     provides `seatFrom`/`seatTo` strings directly, so seat_range is explicit.
+    `seat_detail_level` records whether that range is StubHub-confirmed
+    ("exact"), seller-declared ("declared"), or absent ("none").
 
 `seat_range_label` is kept as a property alias so MongoStore.save_cleaned_event
 (written against broadwaydirect.models.Listing) accepts these objects
@@ -32,8 +34,9 @@ class Listing:
     row: str                      # StubHub row (fallback: rowContent minus "Row ")
     price_level_id: int           # StubHub ticketClass id -> joins to PriceLevel
     quantity: int                 # StubHub availableTickets (NOT len(seat_keys))
-    seat_range: str               # "9001-9007", or "" when no seat detail
-    seat_keys: list = field(default_factory=list)  # per-seat keys, or [] when no seat detail
+    seat_range: str               # "9001-9007" / "9001", or "" - see seat_detail_level
+    seat_keys: list = field(default_factory=list)  # per-seat keys, [] unless seat_detail_level == "exact"
+    seat_detail_level: str = "none"     # "exact" (StubHub-confirmed) | "declared" (seller) | "none"
     seating_type: str = "Consecutive"   # "Consecutive" (isSeatedTogether) | "Piggyback"
     raw_price: float = 0.0        # per-listing price in listing currency (raw_events / HTTP only)
     currency: str = "USD"         # StubHub listingCurrencyCode

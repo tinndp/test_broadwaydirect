@@ -115,11 +115,13 @@ public class StubHubInventoryMapperTests
         var l = new StubHubListing
         {
             ListingId = "a", SeatKeys = new List<string> { "18RS-GG-1", "18RS-GG-2" },
+            SeatDetailLevel = "exact",
             RawPrice = 200.0, Currency = "USD", SeatingType = "Consecutive",
         };
         var t = StubHubInventoryMapper.Build("e", PriceLevels, new[] { l }).Single();
 
         Assert.Equal(new[] { "18RS-GG-1", "18RS-GG-2" }, t.SeatKeys);
+        Assert.Equal("exact", t.SeatDetailLevel);
         Assert.Equal(200.0, t.RawPrice);
         Assert.Equal("USD", t.Currency);
         Assert.Equal("Consecutive", t.Seating);

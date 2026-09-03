@@ -46,7 +46,8 @@ def test_listings_count_and_shared_keys():
     # first 7 keys are exactly broadwaydirect's listing shape
     assert set(list(d)[:7]) == {"section_label", "row", "price_level_id",
                                 "seating_type", "quantity", "seat_range", "seat_keys"}
-    # raw_price / currency are the documented StubHub superset
+    # seat_detail_level / raw_price / currency are the documented StubHub superset
+    assert d["seat_detail_level"] == "none"
     assert d["raw_price"] == 49.97 and d["currency"] == "USD"
 
 
@@ -57,6 +58,7 @@ def test_listing_quantity_is_availabletickets_not_seatkey_count():
     assert fd.seat_keys == []
     assert fd.quantity == 4
     assert fd.seat_range == ""
+    assert fd.seat_detail_level == "none"
     assert fd.seating_type == "Consecutive"   # isSeatedTogether
 
 
@@ -64,7 +66,50 @@ def test_listing_with_seat_detail_expands_keys_and_range():
     rs = {l.section_label: l for l in normalize_listings(load())}["18RS"]
     assert rs.seat_range == "1-3"
     assert rs.seat_keys == ["18RS-GG-1", "18RS-GG-2", "18RS-GG-3"]
+    assert rs.seat_detail_level == "exact"
     assert rs.quantity == 3
+
+
+def _item(**over):
+    it = {
+        "sectionMapName": "163LG", "row": "P", "ticketClass": 3927,
+        "hasSeatDetails": False, "seatFrom": "7", "seatTo": "11",
+        "availableTickets": 5, "isSeatedTogether": True,
+        "rawPrice": 72.01, "listingCurrencyCode": "USD",
+    }
+    it.update(over)
+    return normalize_listings({"items": [it]})[0]
+
+
+def test_declared_range_kept_but_no_seat_keys():
+    # live shape: hasSeatDetails=false, seatFrom/seatTo consistent with the count
+    l = _item()
+    assert l.seat_range == "7-11"
+    assert l.seat_detail_level == "declared"
+    assert l.seat_keys == []            # not StubHub-confirmed -> no per-seat identity
+    assert l.quantity == 5
+
+
+def test_seat_span_rejects_width_mismatch():
+    l = _item(seatFrom="7", seatTo="50", availableTickets=5)
+    assert l.seat_range == "" and l.seat_detail_level == "none"
+
+
+def test_seat_span_rejects_zone_and_hidden():
+    assert _item(isZoneTicketClass=True).seat_detail_level == "none"
+    assert _item(hideSeatAndRowInfo=True).seat_detail_level == "none"
+
+
+def test_seat_span_rejects_nonnumeric_and_empty():
+    assert _item(seatFrom="AA", seatTo="EE").seat_range == ""
+    assert _item(seatFrom="", seatTo="").seat_range == ""
+
+
+def test_exact_single_seat():
+    l = _item(hasSeatDetails=True, seatFrom="9", seatTo="9", availableTickets=1)
+    assert l.seat_range == "9"
+    assert l.seat_keys == ["163LG-P-9"]
+    assert l.seat_detail_level == "exact"
 
 
 def test_listing_piggyback_seating_type():

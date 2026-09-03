@@ -45,6 +45,7 @@ public static class StubHubInventoryMapper
                 DisplayPrice = pl?.DisplayPrice ?? 0,
                 PriceClass = pl?.PriceClass,
                 SeatKeys = l.SeatKeys.ToArray(),
+                SeatDetailLevel = l.SeatDetailLevel,
                 ListingId = l.ListingId,
                 RawPrice = l.RawPrice,
                 Currency = l.Currency,

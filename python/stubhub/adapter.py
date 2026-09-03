@@ -67,33 +67,60 @@ def _row(it: dict) -> str:
     return rc[4:].strip() if rc[:4].lower() == "row " else rc
 
 
+def _seat_span(it: dict):
+    """`(lo, hi)` when `seatFrom`/`seatTo` describe one contiguous block that
+    matches `availableTickets`; otherwise `None`. Independent of
+    `hasSeatDetails` (which is unreliable - StubHub sends a consistent range
+    on plenty of `hasSeatDetails=false` listings too). The width==quantity
+    check is what separates a real reserved-seat block from a zone ticket, a
+    seller typo, or a partial/placeholder range."""
+    if it.get("isZoneTicketClass") or it.get("hideSeatAndRowInfo"):
+        return None
+    try:
+        a, b = int(it.get("seatFrom")), int(it.get("seatTo"))
+    except (TypeError, ValueError):
+        return None
+    lo, hi = min(a, b), max(a, b)
+    if lo < 1 or hi - lo + 1 != (it.get("availableTickets") or 0):
+        return None
+    return lo, hi
+
+
 def _seat_range(it: dict) -> str:
-    if not it.get("hasSeatDetails"):
+    """"7-11" (or "7" for a single seat) from `_seat_span`, else "". Populated
+    for both `hasSeatDetails=true` (exact) and `false` (seller-declared) - see
+    `_seat_detail_level`."""
+    span = _seat_span(it)
+    if not span:
         return ""
-    a, b = it.get("seatFrom"), it.get("seatTo")
-    if a in (None, "") or b in (None, ""):
-        return ""
-    return str(a) if str(a) == str(b) else f"{a}-{b}"
+    lo, hi = span
+    return str(lo) if lo == hi else f"{lo}-{hi}"
 
 
 def _seat_keys(it: dict) -> list:
-    """Per-seat keys "SECTION-ROW-N" when StubHub exposes a seat range that
-    lines up with the ticket count; otherwise an empty list - when
-    `hasSeatDetails=false` StubHub does not send seat numbers at all, so
-    there is nothing to key on (quantity still carries the real count)."""
-    if it.get("hasSeatDetails"):
-        sec = (it.get("sectionMapName") or it.get("section") or "").strip()
-        row = _row(it)
-        try:
-            a_i, b_i = int(it.get("seatFrom")), int(it.get("seatTo"))
-        except (TypeError, ValueError):
-            a_i = b_i = None
-        if a_i is not None and b_i is not None:
-            nums = list(range(min(a_i, b_i), max(a_i, b_i) + 1))
-            qty = it.get("availableTickets") or 0
-            if 0 < len(nums) <= max(qty, 1) + 4:
-                return [f"{sec}-{row}-{n}" for n in nums]
-    return []
+    """Per-seat keys "SECTION-ROW-N" ONLY when StubHub confirms the exact
+    seats (`hasSeatDetails=true`). For a seller-declared range the numbers
+    are not guaranteed (you get N seats together in the row, but not
+    necessarily those exact ones), so keying on them would assert false
+    per-seat identity - return [] and let identity fall to the listing id."""
+    if not it.get("hasSeatDetails"):
+        return []
+    span = _seat_span(it)
+    row = _row(it)
+    if not span or not row:
+        return []
+    sec = (it.get("sectionMapName") or it.get("section") or "").strip()
+    lo, hi = span
+    return [f"{sec}-{row}-{n}" for n in range(lo, hi + 1)]
+
+
+def _seat_detail_level(it: dict) -> str:
+    """"exact"    - hasSeatDetails=true and a consistent range (seat_keys populated)
+    "declared" - range present & consistent but seller-supplied, not confirmed
+    "none"     - no usable seat range (zone/GA/parking, hidden, empty, mismatch)"""
+    if _seat_span(it):
+        return "exact" if it.get("hasSeatDetails") else "declared"
+    return "none"
 
 
 def normalize_listings(raw: dict) -> list:
@@ -107,6 +134,7 @@ def normalize_listings(raw: dict) -> list:
             quantity=int(it.get("availableTickets") or len(keys) or 1),
             seat_range=_seat_range(it),
             seat_keys=keys,
+            seat_detail_level=_seat_detail_level(it),
             seating_type="Consecutive" if it.get("isSeatedTogether") else "Piggyback",
             raw_price=float(it.get("rawPrice") or 0.0),
             currency=it.get("listingCurrencyCode") or "USD",

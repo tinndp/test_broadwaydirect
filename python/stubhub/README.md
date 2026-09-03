@@ -60,9 +60,8 @@ curl -X POST http://localhost:8100/api/eventinventory \
        "url":"https://www.stubhub.com/los-angeles-dodgers-los-angeles-tickets-9-4-2026/event/159257698/"}'
 ```
 
-Response - identical to broadwaydirect's, plus `raw_price`/`currency` on
-each listing (StubHub listings carry their own price; broadwaydirect
-listings inherit it from their price_level):
+Response - identical to broadwaydirect's, plus `seat_detail_level`,
+`raw_price` and `currency` on each listing:
 
 ```json
 {
@@ -76,17 +75,24 @@ listings inherit it from their price_level):
     {"section_label": "18RS", "row": "GG", "price_level_id": 3631,
      "seating_type": "Consecutive", "quantity": 3, "seat_range": "1-3",
      "seat_keys": ["18RS-GG-1","18RS-GG-2","18RS-GG-3"],
-     "raw_price": 85.1, "currency": "USD"}
+     "seat_detail_level": "exact", "raw_price": 85.1, "currency": "USD"}
   ]
 }
 ```
 
-`eventId` is **required** and cross-checked against the id in `url` (they
-must match). `quantity` is forced to `0` internally (all listings,
-regardless of how many each sells) - the "How many tickets?" popup on the
-site is a UI filter the crawler never touches. `cleaned_events` stores only
-the 7 shared listing keys; `raw_price`/`currency` live in `raw_events` and
-the HTTP response only.
+`eventId` is **required** and cross-checked against the id in `url`.
+`quantity` is forced to `0` internally (all listings, regardless of split).
+
+**`seat_detail_level`** - how much to trust `seat_range`:
+
+| value | meaning | `seat_keys` |
+|---|---|---|
+| `exact` | `hasSeatDetails=true` + a range consistent with the count - StubHub-confirmed seats | populated |
+| `declared` | range present & consistent but seller-supplied; you get N seats together in the row, not necessarily those exact numbers | `[]` |
+| `none` | no usable range (zone / GA / parking, `hideSeatAndRowInfo`, empty, or width != count) | `[]` |
+
+`cleaned_events` stores only the 7 shared listing keys; `seat_detail_level`
+/ `raw_price` / `currency` live in `raw_events` and the HTTP response only.
 
 ## Fetch path: grid POST vs section sweep
 

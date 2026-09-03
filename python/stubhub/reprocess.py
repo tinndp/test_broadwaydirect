@@ -19,7 +19,7 @@ from .adapter import build_event, normalize_listings, parse_price_levels
 
 CSV_HEADER = ["event_id", "event_name", "local_date", "section_label", "row",
               "price_level_id", "price", "raw_price", "currency", "seating_type",
-              "quantity", "seat_range", "seat_keys", "event_url"]
+              "quantity", "seat_range", "seat_detail_level", "seat_keys", "event_url"]
 
 
 def _export_csv(rows, out_path):
@@ -64,8 +64,8 @@ def main(argv=None):
                 csv_rows.append([
                     event.id, event.name, event.local_date, l.section_label, l.row,
                     l.price_level_id, pl.price if pl else "", l.raw_price, l.currency,
-                    l.seating_type, l.quantity, l.seat_range, json.dumps(l.seat_keys),
-                    raw.get("eventUrl", ""),
+                    l.seating_type, l.quantity, l.seat_range, l.seat_detail_level,
+                    json.dumps(l.seat_keys), raw.get("eventUrl", ""),
                 ])
 
     print(f"Rebuilt {n_events} events, {n_listings} listings into cleaned_events")

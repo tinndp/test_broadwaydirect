@@ -43,8 +43,9 @@ public class StubHubAdapterTests
         Assert.Equal(3875, first.PriceLevelId);
         Assert.Equal("Consecutive", first.SeatingType);   // isSeatedTogether = true
         Assert.Equal(4, first.Quantity);                  // availableTickets, not SeatKeys.Count
-        Assert.Equal("", first.SeatRange);                // hasSeatDetails = false
-        Assert.Empty(first.SeatKeys);                     // no seat detail -> no seat keys
+        Assert.Equal("", first.SeatRange);                // seatFrom/seatTo empty
+        Assert.Empty(first.SeatKeys);
+        Assert.Equal("none", first.SeatDetailLevel);
         // raw_price / currency are the documented StubHub-only superset
         Assert.Equal(49.97, first.RawPrice);
         Assert.Equal("USD", first.Currency);
@@ -56,9 +57,57 @@ public class StubHubAdapterTests
         var second = StubHubAdapter.NormalizeListings(Load())[1];
         Assert.Equal("1-3", second.SeatRange);
         Assert.Equal(new[] { "18RS-GG-1", "18RS-GG-2", "18RS-GG-3" }, second.SeatKeys);
+        Assert.Equal("exact", second.SeatDetailLevel);    // hasSeatDetails = true
 
         var third = StubHubAdapter.NormalizeListings(Load())[2];
         Assert.Equal("Piggyback", third.SeatingType);     // isSeatedTogether = false
+    }
+
+    // live shape: hasSeatDetails=false, seatFrom/seatTo consistent with the count
+    private static StubHub.Core.Models.StubHubListing One(
+        bool hasSeatDetails = false, string seatFrom = "7", string seatTo = "11",
+        int availableTickets = 5, string extra = "")
+    {
+        var json = $$"""
+        { "items": [ {
+            "sectionMapName": "163LG", "row": "P", "ticketClass": 3927,
+            "hasSeatDetails": {{(hasSeatDetails ? "true" : "false")}},
+            "seatFrom": "{{seatFrom}}", "seatTo": "{{seatTo}}",
+            "availableTickets": {{availableTickets}}, "isSeatedTogether": true,
+            "rawPrice": 72.01, "listingCurrencyCode": "USD"{{extra}}
+        } ] }
+        """;
+        using var doc = JsonDocument.Parse(json);
+        return StubHubAdapter.NormalizeListings(doc.RootElement.Clone())[0];
+    }
+
+    [Fact]
+    public void DeclaredRange_KeptButNoSeatKeys()
+    {
+        var l = One();
+        Assert.Equal("7-11", l.SeatRange);
+        Assert.Equal("declared", l.SeatDetailLevel);
+        Assert.Empty(l.SeatKeys);
+        Assert.Equal(5, l.Quantity);
+    }
+
+    [Fact]
+    public void SeatSpan_RejectsMismatchZoneHiddenAndJunk()
+    {
+        Assert.Equal("none", One(seatTo: "50").SeatDetailLevel);                 // width != qty
+        Assert.Equal("none", One(extra: ", \"isZoneTicketClass\": true").SeatDetailLevel);
+        Assert.Equal("none", One(extra: ", \"hideSeatAndRowInfo\": true").SeatDetailLevel);
+        Assert.Equal("", One(seatFrom: "AA", seatTo: "EE").SeatRange);
+        Assert.Equal("", One(seatFrom: "", seatTo: "").SeatRange);
+    }
+
+    [Fact]
+    public void ExactSingleSeat()
+    {
+        var l = One(hasSeatDetails: true, seatTo: "7", availableTickets: 1);
+        Assert.Equal("7", l.SeatRange);
+        Assert.Equal(new[] { "163LG-P-7" }, l.SeatKeys);
+        Assert.Equal("exact", l.SeatDetailLevel);
     }
 
     [Fact]

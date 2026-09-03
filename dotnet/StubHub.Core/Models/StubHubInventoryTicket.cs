@@ -48,6 +48,10 @@ public sealed class StubHubInventoryTicket
     public string? PriceClass { get; set; }
     public string[] SeatKeys { get; set; } = System.Array.Empty<string>();
 
+    /// <summary>"exact" (SeatKeys are StubHub-confirmed) | "declared" (LowSeat/HighSeat
+    /// come from a seller-supplied range, not confirmed) | "none".</summary>
+    public string SeatDetailLevel { get; set; } = "none";
+
     /// <summary>StubHub-only superset: per-listing price + currency (Broadway
     /// listings inherit price from their price level).</summary>
     public double RawPrice { get; set; }
