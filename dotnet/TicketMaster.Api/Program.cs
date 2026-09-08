@@ -20,25 +20,29 @@ app.UseSwaggerUI();
 // TMEvent_{eventId} collection is the ONLY place listing data lands, so a null store or a failed
 // write is fatal to the request (matches ETECH.Application.MarkAutomation's TicketMasterCrawlerBot /
 // TicketMasterSavePipeline, and StubHub.Api). Connection from MONGO_URI / MONGO_DB env vars.
+// Default points at the shared dev/test Mongo (same box StubHub.Api uses). MONGO_URI / MONGO_DB
+// env vars override it.
+var mongoUri = Environment.GetEnvironmentVariable("MONGO_URI")
+    ?? "mongodb://broadwaydirect_user:broadwaydirect123@192.168.100.2:27017/broadwaydirect";
+var mongoDb = Environment.GetEnvironmentVariable("MONGO_DB") ?? "broadwaydirect";
+
 TicketMasterInventoryStore? store = null;
-var storeInitFailed = false;
+string? storeInitError = null;
 var storeLock = new object();
 
 TicketMasterInventoryStore? GetStore()
 {
     lock (storeLock)
     {
-        if (store != null || storeInitFailed) return store;
+        if (store != null || storeInitError != null) return store;
         try
         {
-            var uri = Environment.GetEnvironmentVariable("MONGO_URI") ?? "mongodb://localhost:27017";
-            var dbName = Environment.GetEnvironmentVariable("MONGO_DB") ?? "broadwaydirect";
-            store = new TicketMasterInventoryStore(uri, dbName);
+            store = new TicketMasterInventoryStore(mongoUri, mongoDb);
         }
         catch (Exception e)
         {
-            storeInitFailed = true;
-            Console.Error.WriteLine($"  !! MongoDB unreachable: {e.Message}");
+            storeInitError = e.Message;
+            Console.Error.WriteLine($"  !! MongoDB unreachable ({mongoUri}): {e.Message}");
         }
         return store;
     }
@@ -73,17 +77,24 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req, TicketMaste
         return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status502BadGateway);
     }
 
-    try
+    var persisted = false;
+    if (req.Persist)
     {
-        var s = GetStore()
-            ?? throw new InvalidOperationException("MongoDB is unreachable - listing data cannot be persisted");
-        s.SaveEventInventory(req.EventId, listings);
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem(
-            detail: $"fetch succeeded but persistence failed: {ex.Message}",
-            statusCode: StatusCodes.Status500InternalServerError);
+        try
+        {
+            var s = GetStore()
+                ?? throw new InvalidOperationException(
+                    $"MongoDB is unreachable at '{mongoUri}' ({storeInitError}). " +
+                    "Set MONGO_URI / MONGO_DB, or pass \"persist\": false to skip persistence.");
+            s.SaveEventInventory(req.EventId, listings);
+            persisted = true;
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(
+                detail: $"fetch succeeded but persistence failed: {ex.Message}",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     return Results.Json(new
@@ -92,7 +103,8 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req, TicketMaste
         total = crawl.Total,
         pageCount = crawl.PageCount,
         listingCount = listings.Count,
-        persistedTo = TicketMasterInventoryStore.CollectionPrefix + req.EventId,
+        persisted,
+        persistedTo = persisted ? TicketMasterInventoryStore.CollectionPrefix + req.EventId : null,
         listings = listings.Select(l => new
         {
             l.Id, l.Section, l.Row, l.MaxQuantity,
@@ -112,5 +124,8 @@ app.Lifetime.ApplicationStopping.Register(() => store?.Close());
 app.Run();
 
 /// <summary>proxy: standard "scheme://[user:pass@]host:port" or raw "host:port:user:pass".
-/// includeRaw: also return every page's raw quickpicks JSON (large).</summary>
-internal record EventInventoryRequest(string EventId, string Url, string? Proxy, bool IncludeRaw = false);
+/// includeRaw: also return every page's raw quickpicks JSON (large).
+/// persist: write the listings to Mongo TMEvent_{eventId} (default true); set false to test the
+/// crawl without a Mongo.</summary>
+internal record EventInventoryRequest(
+    string EventId, string Url, string? Proxy, bool IncludeRaw = false, bool Persist = true);
