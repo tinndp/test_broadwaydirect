@@ -1,0 +1,80 @@
+{
+  "schema": "urn:com.ticketmaster.services:schema:ismds:QuickPicks:4.0",
+  "eventId": "05006389BE118DE0",
+  "offset": 0,
+  "total": 250,
+  "picks": [
+    {
+      "type": "seat",
+      "selection": "standard",
+      "quality": 0.4889,
+      "section": "213",
+      "row": "10",
+      "descriptionId": "D1",
+      "maxQuantity": 4,
+      "offerGroups": [
+        { "offers": ["STD1"], "places": ["p1"], "seats": ["1", "2"] }
+      ]
+    },
+    {
+      "type": "seat",
+      "selection": "standard",
+      "quality": 0.4889,
+      "section": "213",
+      "row": "10",
+      "descriptionId": "D1",
+      "maxQuantity": 2,
+      "offerGroups": [
+        { "offers": ["STD1"], "places": ["p2"], "seats": ["5"] }
+      ]
+    },
+    {
+      "type": "seat",
+      "selection": "standard",
+      "quality": 0.4903,
+      "section": "228",
+      "row": "11",
+      "maxQuantity": 6,
+      "offerGroups": [
+        { "offers": ["STD1", "RES1"], "places": ["p3"], "seats": ["3"] }
+      ]
+    }
+  ],
+  "places": [
+    { "section": "213", "attributes": ["AISLE"], "places": ["p1", "p2"] },
+    { "section": "228", "attributes": ["OBSTRUCTED"], "places": ["p3"] }
+  ],
+  "_embedded": {
+    "offer": [
+      {
+        "offerId": "STD1",
+        "name": "Standard Ticket",
+        "description": "Standard admission",
+        "inventoryType": "primary",
+        "offerType": "standard",
+        "listPrice": 35.40,
+        "faceValue": 30.00,
+        "totalPrice": 35.40,
+        "noChargesPrice": 30.00,
+        "charges": [
+          { "reason": "Service Fee", "type": "fee", "amount": 5.40 }
+        ],
+        "sellableQuantities": [1, 2, 3, 4]
+      },
+      {
+        "offerId": "RES1",
+        "name": "Verified Resale Ticket",
+        "description": "Resale",
+        "inventoryType": "resale",
+        "offerType": "resale",
+        "listPrice": 60.00,
+        "faceValue": 30.00,
+        "totalPrice": 66.00,
+        "noChargesPrice": 60.00
+      }
+    ],
+    "description": [
+      { "descriptionId": "D1", "descriptions": ["Aisle seat", "Great view"] }
+    ]
+  }
+}

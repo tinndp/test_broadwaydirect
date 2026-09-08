@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Pure parse/group logic - no Mongo, no browser. Builds + tests on macOS/Linux.
+       Mirrors the ETECH bot's TicketMasterListingBuilder
+       (ETECH.Application/Rowing/TicketMaster/TicketMasterCrawlerBot). -->
+
+</Project>
