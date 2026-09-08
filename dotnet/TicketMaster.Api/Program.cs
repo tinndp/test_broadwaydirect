@@ -77,6 +77,8 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req, TicketMaste
         return Results.Problem(detail: ex.Message, statusCode: StatusCodes.Status502BadGateway);
     }
 
+    var tickets = TicketMasterInventoryMapper.Build(req.EventId, listings);
+
     var persisted = false;
     if (req.Persist)
     {
@@ -86,7 +88,7 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req, TicketMaste
                 ?? throw new InvalidOperationException(
                     $"MongoDB is unreachable at '{mongoUri}' ({storeInitError}). " +
                     "Set MONGO_URI / MONGO_DB, or pass \"persist\": false to skip persistence.");
-            s.SaveEventInventory(req.EventId, listings);
+            s.SaveEventInventory(req.EventId, tickets);
             persisted = true;
         }
         catch (Exception ex)
@@ -102,18 +104,12 @@ app.MapPost("/api/eventinventory", async (EventInventoryRequest req, TicketMaste
         eventId = crawl.EventId,
         total = crawl.Total,
         pageCount = crawl.PageCount,
-        listingCount = listings.Count,
+        listingCount = tickets.Count,
         persisted,
         persistedTo = persisted ? TicketMasterInventoryStore.CollectionPrefix + req.EventId : null,
-        listings = listings.Select(l => new
-        {
-            l.Id, l.Section, l.Row, l.MaxQuantity,
-            l.ListPrice, l.FaceValue, l.TotalPrice, l.NoChargesPrice,
-            l.OfferName, l.OfferType, l.InventoryType,
-            l.Attributes, l.OfferGroupSeats, l.OfferGroupSeatMin, l.OfferGroupSeatMax,
-            l.DescriptionId, l.Description, l.SellableQuantities, l.ChargeJson,
-            l.DisplaySeat,
-        }),
+        // Integration Template staging documents - exactly what lands in
+        // TicketMaster_Inventories_NEW_{eventId}
+        listings = tickets,
         includeRaw = req.IncludeRaw,
         rawPages = req.IncludeRaw ? crawl.RawPages : null,
     });

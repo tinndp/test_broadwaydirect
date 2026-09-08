@@ -26,13 +26,25 @@ TicketMaster.Api/     net8.0-windows  Minimal API: POST /api/eventinventory. Fet
 TicketMaster.Tests/   net8.0          xUnit for ListingBuilder against a captured quickpicks fixture.
 ```
 
-## MongoDB
+## MongoDB — Integration Template shape
 
 Like `StubHub.*` (and the ETECH `TicketMasterCrawlerBot`), the Api writes listing data to Mongo:
-one collection per event **`TMEvent_{eventId}`**, dropped and rewritten each crawl, one document per
-grouped listing (`TicketMasterListing`, same BSON shape as the ETECH bot's `RowingListingInfo`),
-index on `TMEventId`. It is the **only** place the data lands, so a write failure returns **500**
-(the fetch succeeded but nothing was persisted) - not swallowed.
+one **staging collection per event** `TicketMaster_Inventories_NEW_{eventId}`, dropped and rewritten
+each crawl, one `TicketMasterInventoryTicket` document per grouped listing, index on `SourceEventId`.
+It is the **only** place the data lands, so a write failure returns **500** (the fetch succeeded but
+nothing was persisted) - not swallowed.
+
+`TicketMasterInventoryTicket` = the Integration Template shape: the base
+`IIntegrationTemplateSourceTicket` fields the synchronizer / DataTable mapper depend on
+(`Id / SourceEventId / Section / Row / LowSeat / HighSeat / Quantity / Seating / Price / PublicNotes
+/ PrivateNotes / Splits / BrownerOwned`) **plus** every field the legacy `RowingListingInfo` carried
+as a concrete field (`TMEventId, OfferName, OfferType, InventoryType, ListPrice, FaceValue,
+TotalPrice, NoChargesPrice, ChargeJson, Attributes, OfferGroupSeats/Min/Max, DescriptionId,
+Description, SellableQuantities, DisplaySeat, MaxQuantity`). `Id` (deterministic hash, key
+`Section_Row_MaxQuantity_OfferGroupSeatMin_OfferName`) maps to `_id`.
+
+`ListingBuilder` produces the grouped `TicketMasterListing` intermediate; `TicketMasterInventoryMapper`
+converts it to `TicketMasterInventoryTicket`.
 
 Connection from env vars (default `mongodb://localhost:27017` / db `broadwaydirect`):
 

@@ -1,15 +1,11 @@
-using MongoDB.Bson.Serialization.Attributes;
-
 namespace TicketMaster.Core.Models;
 
 /// <summary>
-/// One grouped listing - the POC counterpart of the ETECH bot's <c>RowingListingInfo</c>
-/// (persisted to Mongo <c>TMEvent_{eventId}</c>). Field set + BSON element names are intentionally
-/// identical so the grouping logic can be validated here and the document shape matches what the
-/// ETECH TicketMaster bot writes. Mongo generates its own <c>_id</c>; <see cref="Id"/> stays a
-/// plain field (same as <c>RowingListingInfo</c>).
+/// One grouped listing produced by <see cref="ListingBuilder"/> - the intermediate shape
+/// (field-for-field the legacy TMCrawler's <c>RowingListingInfo</c>). It is NOT persisted directly
+/// any more: <see cref="TicketMasterInventoryMapper"/> converts it to
+/// <see cref="TicketMasterInventoryTicket"/> (the Integration Template staging document).
 /// </summary>
-[BsonIgnoreExtraElements]
 public sealed class TicketMasterListing
 {
     public string TMEventId { get; set; } = "";
