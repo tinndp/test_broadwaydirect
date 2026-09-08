@@ -10,17 +10,41 @@ net48). It mirrors the ETECH bot at
 
 ```
 TicketMaster.Core/    net8.0          Models/ (quickpicks JSON) + ListingBuilder (parse + group +
-                                      DisplaySeat + deterministic Id) + QuickPicksUrl.
-                                      Pure, no browser/Mongo. Builds + tests on macOS/Linux.
+                                      DisplaySeat + deterministic Id) + QuickPicksUrl +
+                                      Storage/TicketMasterInventoryStore (Mongo: drop+rewrite
+                                      TMEvent_{eventId}, one doc per listing). Builds + tests on
+                                      macOS/Linux (the store just needs a reachable Mongo at run time).
 TicketMaster.Fetch/   net8.0-windows  TicketMasterBrowserSession (one off-screen WebView2 through
                                       the proxy: warm past Kasada + capture the page's own first
                                       quickpicks request) + TicketMasterFetchClient (ApiReplay:
                                       HttpClient replays offset += limit through the SAME proxy).
                                       WebView2 = Windows-only; build-checks on macOS via
                                       EnableWindowsTargeting, does NOT run there.
-TicketMaster.Api/     net8.0-windows  Minimal API: POST /api/eventinventory.
+TicketMaster.Api/     net8.0-windows  Minimal API: POST /api/eventinventory. Fetch -> group ->
+                                      drop+rewrite Mongo TMEvent_{eventId}. Persistence is fatal
+                                      (500 on failure), same as StubHub.Api / the ETECH bot.
 TicketMaster.Tests/   net8.0          xUnit for ListingBuilder against a captured quickpicks fixture.
 ```
+
+## MongoDB
+
+Like `StubHub.*` (and the ETECH `TicketMasterCrawlerBot`), the Api writes listing data to Mongo:
+one collection per event **`TMEvent_{eventId}`**, dropped and rewritten each crawl, one document per
+grouped listing (`TicketMasterListing`, same BSON shape as the ETECH bot's `RowingListingInfo`),
+index on `TMEventId`. It is the **only** place the data lands, so a write failure returns **500**
+(the fetch succeeded but nothing was persisted) - not swallowed.
+
+Connection from env vars (default `mongodb://localhost:27017` / db `broadwaydirect`):
+
+```bash
+export MONGO_URI="mongodb://user:pass@host:27017/broadwaydirect"
+export MONGO_DB="broadwaydirect"
+dotnet run --project TicketMaster.Api
+```
+
+BroadwayDirect keeps its own shared `raw_events` / `cleaned_events` (`MongoStore`); TicketMaster
+follows the StubHub one-collection-per-event convention because that is what the ETECH TicketMaster
+bot writes and what the TU sync (`SK4RowingSyncQueue`, `Type = TicketMasterToTU`) reads.
 
 ## Why ApiReplay (not in-page fetch like BroadwayDirect)
 

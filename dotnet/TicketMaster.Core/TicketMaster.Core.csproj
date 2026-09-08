@@ -6,8 +6,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <!-- Pure parse/group logic - no Mongo, no browser. Builds + tests on macOS/Linux.
-       Mirrors the ETECH bot's TicketMasterListingBuilder
+  <!-- Parse/group logic + the Mongo store. Builds + tests on macOS/Linux (the store just needs a
+       reachable Mongo at run time). Mirrors the ETECH bot's TicketMasterListingBuilder +
+       TicketMasterSavePipeline's Mongo write
        (ETECH.Application/Rowing/TicketMaster/TicketMasterCrawlerBot). -->
+  <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" Version="2.29.0" />
+  </ItemGroup>
 
 </Project>
